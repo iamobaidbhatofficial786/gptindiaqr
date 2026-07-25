@@ -136,7 +136,7 @@
     background:transparent;color:var(--sub);font-weight:600;font-size:13.5px;cursor:pointer;
     transition:color .15s,border-color .15s}
   .again:hover{color:var(--text);border-color:var(--hair2)}
-  .err-note{font-size:12.5px;color:var(--sub);line-height:1.6;margin-top:4px}
+  .err-note{font-size:13px;color:var(--err);line-height:1.6;margin-top:4px;word-break:break-word}
   .err-note b{color:var(--ok)}
   .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);
     background:var(--panel2);border:1px solid var(--hair2);color:var(--text);
@@ -191,12 +191,12 @@
   <!-- Step 2: Key Activation & ChatGPT Session Form -->
   <div class="card" id="formCard">
     <div class="field">
-      <label>2. Enter Redemption Key <span class="req">*</span></label>
+      <label>2. Enter Redemption Key (or upi_live_ key) <span class="req">*</span></label>
       <div class="keybar">
-        <input id="userKey" type="text" spellcheck="false" autocomplete="off" placeholder="e.g. GPT-200-XXXX-XXXX">
+        <input id="userKey" type="text" spellcheck="false" autocomplete="off" placeholder="e.g. GPT-200-XXXX-XXXX or upi_live_…">
         <button class="icon-btn" id="activateBtn" type="button">Activate</button>
       </div>
-      <p class="hint">Received from Admin after UPI payment. Automatically unlocks session input.</p>
+      <p class="hint">Received from Admin after payment, OR enter your own upi_live_ key.</p>
     </div>
 
     <!-- Active Balance Badge -->
@@ -344,6 +344,16 @@ function checkKey(k){
     createBtnLbl.textContent = "Create UPI Link (Requires Active Key)";
     return;
   }
+  
+  if(k.trim().startsWith("upi_live_")){
+    balVal.innerHTML = "<b>Direct upi_live_ Key Active</b>";
+    sessionInput.disabled = false;
+    createBtn.disabled = false;
+    createBtnLbl.textContent = "Create UPI Link";
+    localStorage.setItem(LS_KEY, k.trim());
+    return;
+  }
+
   balVal.textContent = "Checking…";
   fetch("/api/check-code", {
     method: "POST",
@@ -424,6 +434,9 @@ async function createLink(){
         checkKey(key);
       }else if(code){
         pollOrderStatus(code);
+      }else{
+        setBtnLoading(false);
+        failFlow(JSON.stringify(d), false);
       }
     }else{
       setBtnLoading(false);
@@ -470,7 +483,7 @@ function failFlow(msg, refunded){
   showStatus("failed","Could not create link", "");
   failBlock.style.display="block";
   successBlock.style.display="none";
-  failMsg.innerHTML = escapeHtml(msg) + "<br><span style='color:var(--dim)'>Try again with a fresh session token.</span>";
+  failMsg.innerHTML = "<b>Error Details:</b><br>" + escapeHtml(msg) + "<br><br><span style='color:var(--sub)'>Ensure your Netlify <code>UPSTREAM_API_KEY</code> has active USD balance on duskyr.com and your session token is valid.</span>";
 }
 
 function escapeHtml(s){ return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }

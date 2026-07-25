@@ -43,7 +43,7 @@ function saveCodes(codes) {
   try {
     fs.writeFileSync(CODES_FILE, JSON.stringify(codes, null, 2), 'utf8');
   } catch (err) {
-    // Serverless filesystem read-only warning (normal on Netlify Functions without database)
+    // Serverless read-only warning
   }
 }
 
@@ -54,7 +54,7 @@ function generateCode(prefix = 'GPT') {
 }
 
 // ----------------------------------------------------
-// Public API Endpoints (Supports /api/ and direct paths)
+// Public API Endpoints
 // ----------------------------------------------------
 
 app.get(['/api/plans', '/plans'], (req, res) => {
@@ -71,14 +71,27 @@ app.get(['/api/plans', '/plans'], (req, res) => {
 app.post(['/api/check-code', '/check-code'], (req, res) => {
   const { code } = req.body || {};
   if (!code) {
-    return res.status(400).json({ ok: false, error: 'Redemption code is required.' });
+    return res.status(400).json({ ok: false, error: 'Redemption code or API key is required.' });
+  }
+
+  const cleanCode = code.trim();
+
+  // If user enters direct upi_live_ key
+  if (cleanCode.startsWith('upi_live_')) {
+    return res.json({
+      ok: true,
+      code: cleanCode,
+      credits: 999,
+      initialCredits: 999,
+      isDirectKey: true
+    });
   }
 
   const codes = loadCodes();
-  const keyData = codes[code.trim().toUpperCase()];
+  const keyData = codes[cleanCode.toUpperCase()];
 
   if (!keyData) {
-    return res.status(404).json({ ok: false, error: 'Invalid redemption key.' });
+    return res.status(404).json({ ok: false, error: 'Invalid redemption key. Check spelling or generate in Admin Panel.' });
   }
 
   res.json({
@@ -94,30 +107,46 @@ app.post(['/api/create-link', '/create-link'], async (req, res) => {
   const { code, session, reference } = req.body || {};
 
   if (!code) {
-    return res.status(400).json({ ok: false, error: 'Redemption key is required.' });
+    return res.status(400).json({ ok: false, error: 'Redemption key or upi_live_ key is required.' });
   }
   if (!session) {
-    return res.status(400).json({ ok: false, error: 'ChatGPT session is required.' });
+    return res.status(400).json({ ok: false, error: 'ChatGPT session token/JSON is required.' });
   }
 
-  const cleanCode = code.trim().toUpperCase();
-  const codes = loadCodes();
-  const keyData = codes[cleanCode];
+  const cleanCode = code.trim();
+  let upstreamKey = process.env.UPSTREAM_API_KEY ? process.env.UPSTREAM_API_KEY.trim() : '';
+  let isDirectKey = false;
+  let keyData = null;
+  let codes = {};
 
-  if (!keyData) {
-    return res.status(404).json({ ok: false, error: 'Invalid redemption key.' });
+  // Check if direct upi_live_ key or redemption code
+  if (cleanCode.startsWith('upi_live_')) {
+    upstreamKey = cleanCode;
+    isDirectKey = true;
+  } else {
+    codes = loadCodes();
+    keyData = codes[cleanCode.toUpperCase()];
+
+    if (!keyData) {
+      return res.status(404).json({ ok: false, error: 'Invalid redemption key.' });
+    }
+
+    if (keyData.credits < 1) {
+      return res.status(403).json({ ok: false, error: 'Insufficient credits on this key. Please top up or enter a new key.' });
+    }
   }
 
-  if (keyData.credits < 1) {
-    return res.status(403).json({ ok: false, error: 'Insufficient credits. Please top up or enter a new code.' });
-  }
-
-  const upstreamKey = process.env.UPSTREAM_API_KEY;
   if (!upstreamKey || upstreamKey === 'upi_live_your_actual_key_here') {
     return res.status(500).json({
       ok: false,
-      error: 'Server UPSTREAM_API_KEY is missing. Please set UPSTREAM_API_KEY in Netlify environment variables.'
+      error: 'Server UPSTREAM_API_KEY is not configured in Netlify environment variables. Please add UPSTREAM_API_KEY in Netlify Site Configuration.'
     });
+  }
+
+  // Parse session if JSON string or pass raw
+  let sessionPayload = session;
+  if (typeof session === 'string' && session.trim().startsWith('{')) {
+    try { sessionPayload = JSON.parse(session.trim()); } catch(e){}
   }
 
   try {
@@ -128,32 +157,36 @@ app.post(['/api/create-link', '/create-link'], async (req, res) => {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        session: session,
+        session: sessionPayload,
         reference: reference || undefined
       })
     });
 
     const data = await upstreamRes.json();
 
-    if (upstreamRes.ok && data && (data.code || data.status === 'processing' || data.payment_url)) {
-      // Deduct 1 credit automatically
-      keyData.credits = Math.max(0, keyData.credits - 1);
-      keyData.usage_history = keyData.usage_history || [];
-      keyData.usage_history.push({
-        timestamp: new Date().toISOString(),
-        order_code: data.code || null,
-        reference: reference || null
-      });
-      codes[cleanCode] = keyData;
-      saveCodes(codes);
+    if (upstreamRes.ok && data && (data.code || data.status === 'processing' || data.payment_url || data.ok)) {
+      // Deduct 1 credit automatically for redemption codes
+      if (!isDirectKey && keyData) {
+        keyData.credits = Math.max(0, keyData.credits - 1);
+        keyData.usage_history = keyData.usage_history || [];
+        keyData.usage_history.push({
+          timestamp: new Date().toISOString(),
+          order_code: data.code || null,
+          reference: reference || null
+        });
+        codes[cleanCode.toUpperCase()] = keyData;
+        saveCodes(codes);
+      }
 
       return res.json({
         ok: true,
         data: data,
-        remaining_credits: keyData.credits
+        remaining_credits: isDirectKey ? 999 : keyData.credits
       });
     } else {
-      const errMsg = (data && (data.error || data.message)) ? (data.error || data.message) : 'Failed to initiate UPI link.';
+      const errMsg = (data && (data.error || data.message))
+        ? (data.error || data.message)
+        : `Upstream API error (${upstreamRes.status}): ${JSON.stringify(data)}`;
       return res.status(upstreamRes.status || 400).json({ ok: false, error: errMsg, data: data });
     }
   } catch (err) {
@@ -164,7 +197,7 @@ app.post(['/api/create-link', '/create-link'], async (req, res) => {
 
 app.get(['/api/order-status/:orderCode', '/order-status/:orderCode'], async (req, res) => {
   const { orderCode } = req.params;
-  const upstreamKey = process.env.UPSTREAM_API_KEY;
+  const upstreamKey = (process.env.UPSTREAM_API_KEY || '').trim();
 
   if (!upstreamKey) {
     return res.status(500).json({ ok: false, error: 'Server upstream key missing.' });
@@ -190,7 +223,7 @@ app.post(['/api/admin/login', '/admin/login'], (req, res) => {
   const expectedPass = process.env.ADMIN_PASSWORD || ADMIN_PASSWORD;
 
   if (password && password.trim() === expectedPass.trim()) {
-    const token = crypto.createHash('sha256').update(expectedPass + '_salt_2026').digest('hex');
+    const token = crypto.createHash('sha256').update(expectedPass.trim() + '_salt_2026').digest('hex');
     return res.json({ ok: true, token });
   }
   return res.status(401).json({ ok: false, error: 'Invalid admin passcode.' });
@@ -199,7 +232,7 @@ app.post(['/api/admin/login', '/admin/login'], (req, res) => {
 function checkAdminAuth(req, res, next) {
   const token = req.headers['x-admin-token'];
   const expectedPass = process.env.ADMIN_PASSWORD || ADMIN_PASSWORD;
-  const expected = crypto.createHash('sha256').update(expectedPass + '_salt_2026').digest('hex');
+  const expected = crypto.createHash('sha256').update(expectedPass.trim() + '_salt_2026').digest('hex');
   if (token === expected) {
     return next();
   }
@@ -248,7 +281,6 @@ if (require.main === module) {
   app.listen(PORT, () => {
     console.log(`====================================================`);
     console.log(`UPI QR Creator Proxy Server running on port ${PORT}`);
-    console.log(`Admin Panel: http://localhost:${PORT}/admin.html`);
     console.log(`====================================================`);
   });
 }
