@@ -64,3 +64,5 @@ Everything is self-contained in a single HTML file:
 - **Styles/Branding:** Edit the `<style>` block in `<head>`.
 - **Text & Structure:** Edit the HTML in `<body>`.
 - **API Base URL:** Defined at `var API_BASE = "https://duskyr.com/api/upi";` (leave unchanged unless self-hosting the backend API).
+
+<!-- Updated: 2026-07-25 -->
