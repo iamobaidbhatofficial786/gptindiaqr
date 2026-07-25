@@ -15,35 +15,44 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(__dirname));
 
-// Data persistence directory (In-memory fallback for serverless read-only environments)
+// Data persistence directory (Supports local storage & Netlify serverless /tmp directory)
 const DATA_DIR = path.join(__dirname, 'data');
-const CODES_FILE = path.join(DATA_DIR, 'codes.json');
+const LOCAL_FILE = path.join(DATA_DIR, 'codes.json');
+const TMP_FILE = path.join('/tmp', 'codes.json');
 
 let inMemoryStore = {};
 
-if (!fs.existsSync(DATA_DIR)) {
-  try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch(e){}
+function getStorageFilePath() {
+  try {
+    if (fs.existsSync(TMP_FILE)) return TMP_FILE;
+    if (fs.existsSync(LOCAL_FILE)) return LOCAL_FILE;
+  } catch(e){}
+  return (process.env.NETLIFY || process.env.LAMBDA_TASK_ROOT) ? TMP_FILE : LOCAL_FILE;
 }
 
 function loadCodes() {
   try {
-    if (fs.existsSync(CODES_FILE)) {
-      const data = JSON.parse(fs.readFileSync(CODES_FILE, 'utf8'));
+    const filePath = getStorageFilePath();
+    if (fs.existsSync(filePath)) {
+      const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
       inMemoryStore = { ...inMemoryStore, ...data };
       return inMemoryStore;
     }
   } catch (err) {
-    console.error('Error reading codes.json:', err);
+    console.error('Error reading codes file:', err);
   }
   return inMemoryStore;
 }
 
 function saveCodes(codes) {
   inMemoryStore = codes;
+  const filePath = getStorageFilePath();
   try {
-    fs.writeFileSync(CODES_FILE, JSON.stringify(codes, null, 2), 'utf8');
+    const dir = path.dirname(filePath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(codes, null, 2), 'utf8');
   } catch (err) {
-    // Serverless read-only warning
+    // Serverless read-only warning fallback
   }
 }
 

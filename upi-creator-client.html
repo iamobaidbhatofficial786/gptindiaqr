@@ -537,6 +537,7 @@ againBtn.addEventListener("click",function(){
   resultCard.classList.remove("show");
   formCard.style.display="block";
   sessionInput.value=""; refInput.value="";
+  if(userKeyInput.value){ checkKey(userKeyInput.value); }
   sessionInput.focus();
 });
 
