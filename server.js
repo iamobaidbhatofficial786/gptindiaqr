@@ -15,34 +15,38 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(__dirname));
 
-// Data persistence directory
+// Data persistence directory (In-memory fallback for serverless read-only environments)
 const DATA_DIR = path.join(__dirname, 'data');
 const CODES_FILE = path.join(DATA_DIR, 'codes.json');
 
+let inMemoryStore = {};
+
 if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+  try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch(e){}
 }
 
 function loadCodes() {
   try {
     if (fs.existsSync(CODES_FILE)) {
-      return JSON.parse(fs.readFileSync(CODES_FILE, 'utf8'));
+      const data = JSON.parse(fs.readFileSync(CODES_FILE, 'utf8'));
+      inMemoryStore = { ...inMemoryStore, ...data };
+      return inMemoryStore;
     }
   } catch (err) {
     console.error('Error reading codes.json:', err);
   }
-  return {};
+  return inMemoryStore;
 }
 
 function saveCodes(codes) {
+  inMemoryStore = codes;
   try {
     fs.writeFileSync(CODES_FILE, JSON.stringify(codes, null, 2), 'utf8');
   } catch (err) {
-    console.error('Error saving codes.json:', err);
+    // Serverless filesystem read-only warning (normal on Netlify Functions without database)
   }
 }
 
-// Generate unique key code
 function generateCode(prefix = 'GPT') {
   const rand = crypto.randomBytes(4).toString('hex').toUpperCase();
   const rand2 = crypto.randomBytes(4).toString('hex').toUpperCase();
@@ -50,11 +54,10 @@ function generateCode(prefix = 'GPT') {
 }
 
 // ----------------------------------------------------
-// Public API Endpoints
+// Public API Endpoints (Supports /api/ and direct paths)
 // ----------------------------------------------------
 
-// 1. Get Payment Plans and UPI ID
-app.get('/api/plans', (req, res) => {
+app.get(['/api/plans', '/plans'], (req, res) => {
   res.json({
     ok: true,
     upi_id: PAYMENT_UPI_ID,
@@ -65,8 +68,7 @@ app.get('/api/plans', (req, res) => {
   });
 });
 
-// 2. Check User Redemption Code
-app.post('/api/check-code', (req, res) => {
+app.post(['/api/check-code', '/check-code'], (req, res) => {
   const { code } = req.body || {};
   if (!code) {
     return res.status(400).json({ ok: false, error: 'Redemption code is required.' });
@@ -88,8 +90,7 @@ app.post('/api/check-code', (req, res) => {
   });
 });
 
-// 3. Create ChatGPT UPI Link (Secure Proxy + Auto Deduct 1 Credit)
-app.post('/api/create-link', async (req, res) => {
+app.post(['/api/create-link', '/create-link'], async (req, res) => {
   const { code, session, reference } = req.body || {};
 
   if (!code) {
@@ -115,7 +116,7 @@ app.post('/api/create-link', async (req, res) => {
   if (!upstreamKey || upstreamKey === 'upi_live_your_actual_key_here') {
     return res.status(500).json({
       ok: false,
-      error: 'Server upstream API key is not configured. Please set UPSTREAM_API_KEY in server environment variables.'
+      error: 'Server UPSTREAM_API_KEY is missing. Please set UPSTREAM_API_KEY in Netlify environment variables.'
     });
   }
 
@@ -161,8 +162,7 @@ app.post('/api/create-link', async (req, res) => {
   }
 });
 
-// 4. Poll Order Status
-app.get('/api/order-status/:orderCode', async (req, res) => {
+app.get(['/api/order-status/:orderCode', '/order-status/:orderCode'], async (req, res) => {
   const { orderCode } = req.params;
   const upstreamKey = process.env.UPSTREAM_API_KEY;
 
@@ -185,28 +185,28 @@ app.get('/api/order-status/:orderCode', async (req, res) => {
 // Admin Endpoints
 // ----------------------------------------------------
 
-// Admin Login
-app.post('/api/admin/login', (req, res) => {
+app.post(['/api/admin/login', '/admin/login'], (req, res) => {
   const { password } = req.body || {};
-  if (password === ADMIN_PASSWORD) {
-    const token = crypto.createHash('sha256').update(ADMIN_PASSWORD + '_salt_2026').digest('hex');
+  const expectedPass = process.env.ADMIN_PASSWORD || ADMIN_PASSWORD;
+
+  if (password && password.trim() === expectedPass.trim()) {
+    const token = crypto.createHash('sha256').update(expectedPass + '_salt_2026').digest('hex');
     return res.json({ ok: true, token });
   }
   return res.status(401).json({ ok: false, error: 'Invalid admin passcode.' });
 });
 
-// Admin Middleware Check
 function checkAdminAuth(req, res, next) {
   const token = req.headers['x-admin-token'];
-  const expected = crypto.createHash('sha256').update(ADMIN_PASSWORD + '_salt_2026').digest('hex');
+  const expectedPass = process.env.ADMIN_PASSWORD || ADMIN_PASSWORD;
+  const expected = crypto.createHash('sha256').update(expectedPass + '_salt_2026').digest('hex');
   if (token === expected) {
     return next();
   }
   return res.status(401).json({ ok: false, error: 'Unauthorized admin request.' });
 }
 
-// Admin Generate Keys
-app.post('/api/admin/generate-keys', checkAdminAuth, (req, res) => {
+app.post(['/api/admin/generate-keys', '/admin/generate-keys'], checkAdminAuth, (req, res) => {
   const { type, count = 1 } = req.body || {};
   
   let credits = 1;
@@ -238,19 +238,16 @@ app.post('/api/admin/generate-keys', checkAdminAuth, (req, res) => {
   res.json({ ok: true, keys: generated });
 });
 
-// Admin List Keys
-app.get('/api/admin/keys', checkAdminAuth, (req, res) => {
+app.get(['/api/admin/keys', '/admin/keys'], checkAdminAuth, (req, res) => {
   const codes = loadCodes();
   const list = Object.values(codes).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   res.json({ ok: true, keys: list });
 });
 
-// Start Server
 if (require.main === module) {
   app.listen(PORT, () => {
     console.log(`====================================================`);
     console.log(`UPI QR Creator Proxy Server running on port ${PORT}`);
-    console.log(`UPI ID: ${PAYMENT_UPI_ID}`);
     console.log(`Admin Panel: http://localhost:${PORT}/admin.html`);
     console.log(`====================================================`);
   });
