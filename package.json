@@ -1,0 +1,16 @@
+{
+  "name": "gptindiaqr-server",
+  "version": "1.0.0",
+  "description": "Secure UPI QR Creator Server with Admin Panel and Credit System",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "serverless-http": "^3.2.0"
+  }
+}

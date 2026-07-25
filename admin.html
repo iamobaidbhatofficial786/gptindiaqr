@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin Panel — UPI QR Creator</title>
+<style>
+  :root{
+    color-scheme:dark;
+    --bg:#070a11; --panel:#0d1219; --panel2:#121824; --tile:#0b111b;
+    --hair:rgba(96,128,180,.18); --hair2:rgba(96,128,180,.30);
+    --text:#e8eef8; --sub:#93a3bd; --dim:#61738f;
+    --acc:#6d8dff; --acc2:#5a78ff; --ok:#38e0b0; --warn:#f6b73c; --err:#ff8f9b;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+  .wrap{max-width:900px;margin:30px auto;padding:0 16px}
+  header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;border-bottom:1px solid var(--hair);padding-bottom:16px}
+  h1{font-size:20px;font-weight:800;margin:0}
+  .sub{color:var(--sub);font-size:13px}
+  .card{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--hair);border-radius:16px;padding:20px;margin-bottom:20px;box-shadow:0 10px 30px -15px rgba(0,0,0,.8)}
+  label{display:block;font-size:12px;font-weight:600;color:var(--sub);margin-bottom:6px}
+  input,select{width:100%;background:var(--tile);border:1px solid var(--hair);border-radius:10px;color:var(--text);font-size:14px;font-family:var(--mono);padding:10px 12px;outline:none;margin-bottom:14px}
+  input:focus{border-color:var(--acc)}
+  .btn{background:linear-gradient(180deg,var(--acc),var(--acc2));color:#0a1020;border:none;border-radius:10px;padding:12px 18px;font-weight:700;font-size:14px;cursor:pointer;transition:transform .1s}
+  .btn:hover{transform:translateY(-1px)}
+  .btn-sec{background:var(--tile);border:1px solid var(--hair);color:var(--text);margin-left:8px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:20px}
+  .stat-box{background:var(--tile);border:1px solid var(--hair);border-radius:12px;padding:14px;text-align:center}
+  .stat-num{font-size:24px;font-weight:800;color:var(--ok);font-family:var(--mono)}
+  .stat-lbl{font-size:12px;color:var(--sub)}
+  table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}
+  th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--hair)}
+  th{color:var(--sub);font-size:11px;text-transform:uppercase}
+  .code-cell{font-family:var(--mono);font-weight:700;color:var(--acc)}
+  .copy-sm{background:rgba(109,141,255,.15);border:1px solid var(--acc);color:var(--acc);padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer}
+  .copy-sm:hover{background:rgba(109,141,255,.3)}
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--acc);color:var(--text);padding:10px 18px;border-radius:10px;font-size:13px;display:none}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Admin Panel — UPI QR Creator</h1>
+      <span class="sub">Generate & manage customer credit redemption keys</span>
+    </div>
+    <button class="btn btn-sec" id="logoutBtn" style="display:none">Logout</button>
+  </header>
+
+  <!-- Login Form -->
+  <div id="loginSection" class="card" style="max-width:400px;margin:40px auto">
+    <h2 style="font-size:16px;margin-top:0">Admin Authentication</h2>
+    <div style="margin-bottom:12px">
+      <label>Passcode</label>
+      <input type="password" id="passcode" placeholder="Enter admin passcode…">
+    </div>
+    <button class="btn" id="loginBtn" style="width:100%">Login to Admin Panel</button>
+  </div>
+
+  <!-- Main Dashboard -->
+  <div id="dashSection" style="display:none">
+    <div class="grid">
+      <div class="stat-box">
+        <div class="stat-num" id="totalKeys">0</div>
+        <div class="stat-lbl">Total Keys Generated</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-num" id="activeCredits" style="color:var(--warn)">0</div>
+        <div class="stat-lbl">Remaining Active Credits</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-num" id="usedCredits" style="color:var(--sub)">0</div>
+        <div class="stat-lbl">Used Credits</div>
+      </div>
+    </div>
+
+    <!-- Generator Form -->
+    <div class="card">
+      <h3 style="font-size:15px;margin:0 0 14px">Generate Redemption Keys</h3>
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:200px">
+          <label>Select Plan Pack</label>
+          <select id="planType">
+            <option value="pack15">₹200 Plan — 15 Credits Pack</option>
+            <option value="pack1">₹20 Plan — 1 Credit Pack</option>
+          </select>
+        </div>
+        <div style="width:120px">
+          <label>Quantity</label>
+          <input type="number" id="keyCount" value="1" min="1" max="20">
+        </div>
+        <div style="display:flex;align-items:flex-end">
+          <button class="btn" id="genBtn" style="height:42px;margin-bottom:14px">Generate Keys</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Keys Table -->
+    <div class="card">
+      <h3 style="font-size:15px;margin:0 0 14px">Redemption Keys List</h3>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Redemption Key</th>
+              <th>Remaining Credits</th>
+              <th>Initial Pack</th>
+              <th>Created At</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="keysTableBody">
+            <tr><td colspan="5" style="text-align:center;color:var(--dim)">Loading keys…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  var token = localStorage.getItem("gpt_admin_token");
+
+  function toast(msg){
+    var el=document.getElementById("toast"); el.textContent=msg; el.style.display="block";
+    setTimeout(function(){ el.style.display="none"; }, 2000);
+  }
+
+  function api(url, method, body){
+    return fetch(url, {
+      method: method || "GET",
+      headers: {
+        "Content-Type": "application/json",
+        "x-admin-token": token || ""
+      },
+      body: body ? JSON.stringify(body) : undefined
+    }).then(function(r){ return r.json(); });
+  }
+
+  document.getElementById("loginBtn").addEventListener("click", function(){
+    var pwd = document.getElementById("passcode").value;
+    api("/api/admin/login", "POST", { password: pwd }).then(function(d){
+      if(d.ok){
+        token = d.token;
+        localStorage.setItem("gpt_admin_token", token);
+        showDash();
+      }else{
+        alert(d.error || "Login failed");
+      }
+    });
+  });
+
+  document.getElementById("logoutBtn").addEventListener("click", function(){
+    localStorage.removeItem("gpt_admin_token");
+    token = null;
+    location.reload();
+  });
+
+  function showDash(){
+    document.getElementById("loginSection").style.display="none";
+    document.getElementById("dashSection").style.display="block";
+    document.getElementById("logoutBtn").style.display="inline-block";
+    loadKeys();
+  }
+
+  function loadKeys(){
+    api("/api/admin/keys").then(function(d){
+      if(!d.ok){ alert("Failed to load keys: "+d.error); return; }
+      var keys = d.keys || [];
+      var tbody = document.getElementById("keysTableBody");
+      tbody.innerHTML = "";
+      
+      var totActive=0, totUsed=0;
+
+      if(keys.length === 0){
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--dim)">No keys generated yet. Click "Generate Keys" above.</td></tr>';
+      }
+
+      keys.forEach(function(k){
+        totActive += k.credits;
+        totUsed += (k.initialCredits - k.credits);
+
+        var tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td class="code-cell">${k.code}</td>
+          <td><b>${k.credits}</b> / ${k.initialCredits}</td>
+          <td>${k.initialCredits === 15 ? "₹200 (15 Creds)" : "₹20 (1 Cred)"}</td>
+          <td>${new Date(k.created_at).toLocaleString()}</td>
+          <td><button class="copy-sm" onclick="copyKey('${k.code}')">Copy Key</button></td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById("totalKeys").textContent = keys.length;
+      document.getElementById("activeCredits").textContent = totActive;
+      document.getElementById("usedCredits").textContent = totUsed;
+    });
+  }
+
+  document.getElementById("genBtn").addEventListener("click", function(){
+    var type = document.getElementById("planType").value;
+    var count = document.getElementById("keyCount").value;
+
+    api("/api/admin/generate-keys", "POST", { type: type, count: count }).then(function(d){
+      if(d.ok){
+        toast("Generated " + d.keys.length + " key(s)!");
+        loadKeys();
+      }else{
+        alert(d.error || "Failed to generate keys");
+      }
+    });
+  });
+
+  window.copyKey = function(code){
+    navigator.clipboard.writeText(code).then(function(){ toast("Key copied: " + code); });
+  };
+
+  if(token){
+    showDash();
+  }
+</script>
+</body>
+</html>
