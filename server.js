@@ -76,7 +76,7 @@ app.post(['/api/check-code', '/check-code'], (req, res) => {
 
   const cleanCode = code.trim();
 
-  // If user enters direct upi_live_ key
+  // Direct upi_live_ key check
   if (cleanCode.startsWith('upi_live_')) {
     return res.json({
       ok: true,
@@ -119,7 +119,6 @@ app.post(['/api/create-link', '/create-link'], async (req, res) => {
   let keyData = null;
   let codes = {};
 
-  // Check if direct upi_live_ key or redemption code
   if (cleanCode.startsWith('upi_live_')) {
     upstreamKey = cleanCode;
     isDirectKey = true;
@@ -139,39 +138,41 @@ app.post(['/api/create-link', '/create-link'], async (req, res) => {
   if (!upstreamKey || upstreamKey === 'upi_live_your_actual_key_here') {
     return res.status(500).json({
       ok: false,
-      error: 'Server UPSTREAM_API_KEY is not configured in Netlify environment variables. Please add UPSTREAM_API_KEY in Netlify Site Configuration.'
+      error: 'Server UPSTREAM_API_KEY is not configured in Netlify environment variables.'
     });
   }
 
-  // Parse session if JSON string or pass raw
-  let sessionPayload = session;
-  if (typeof session === 'string' && session.trim().startsWith('{')) {
-    try { sessionPayload = JSON.parse(session.trim()); } catch(e){}
+  // Format session_json payload required by duskyr API /v1/create
+  let sessionJsonStr = session;
+  if (typeof session === 'object') {
+    sessionJsonStr = JSON.stringify(session);
+  } else if (typeof session === 'string') {
+    sessionJsonStr = session.trim();
   }
 
   try {
-    const upstreamRes = await fetch(`${UPSTREAM_API_BASE}/v1/order`, {
+    const upstreamRes = await fetch(`${UPSTREAM_API_BASE}/v1/create`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${upstreamKey}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        session: sessionPayload,
+        session_json: sessionJsonStr,
         reference: reference || undefined
       })
     });
 
     const data = await upstreamRes.json();
 
-    if (upstreamRes.ok && data && (data.code || data.status === 'processing' || data.payment_url || data.ok)) {
+    if (upstreamRes.ok && data && (data.code || data.order_code || data.status === 'processing' || data.payment_url || data.ok)) {
       // Deduct 1 credit automatically for redemption codes
       if (!isDirectKey && keyData) {
         keyData.credits = Math.max(0, keyData.credits - 1);
         keyData.usage_history = keyData.usage_history || [];
         keyData.usage_history.push({
           timestamp: new Date().toISOString(),
-          order_code: data.code || null,
+          order_code: data.code || data.order_code || null,
           reference: reference || null
         });
         codes[cleanCode.toUpperCase()] = keyData;
@@ -184,8 +185,8 @@ app.post(['/api/create-link', '/create-link'], async (req, res) => {
         remaining_credits: isDirectKey ? 999 : keyData.credits
       });
     } else {
-      const errMsg = (data && (data.error || data.message))
-        ? (data.error || data.message)
+      const errMsg = (data && (data.message || data.error))
+        ? (data.message || data.error)
         : `Upstream API error (${upstreamRes.status}): ${JSON.stringify(data)}`;
       return res.status(upstreamRes.status || 400).json({ ok: false, error: errMsg, data: data });
     }

@@ -427,13 +427,13 @@ async function createLink(){
 
     if(r.ok && resData && resData.ok){
       var d = resData.data;
-      var code = d.code;
+      var orderCode = d.order_code || d.code;
       if(d.payment_url){
         setBtnLoading(false);
-        successFlow(d.payment_url, code);
+        successFlow(d.payment_url, orderCode || "");
         checkKey(key);
-      }else if(code){
-        pollOrderStatus(code);
+      }else if(orderCode){
+        pollOrderStatus(orderCode);
       }else{
         setBtnLoading(false);
         failFlow(JSON.stringify(d), false);
@@ -454,7 +454,7 @@ function pollOrderStatus(code){
     try{
       var r = await fetch("/api/order-status/" + encodeURIComponent(code));
       var d = await r.json();
-      if(d && d.status === "completed" && d.payment_url){
+      if(d && (d.status === "completed" || d.payment_url) && d.payment_url){
         clearInterval(pollTimer);
         setBtnLoading(false);
         successFlow(d.payment_url, code);
@@ -462,7 +462,7 @@ function pollOrderStatus(code){
       }else if(d && d.status === "failed"){
         clearInterval(pollTimer);
         setBtnLoading(false);
-        failFlow(d.error || "Order failed", !!d.refunded);
+        failFlow(d.error || d.message || "Order failed", !!d.refunded);
         checkKey(userKeyInput.value);
       }
     }catch(e){}
@@ -483,7 +483,7 @@ function failFlow(msg, refunded){
   showStatus("failed","Could not create link", "");
   failBlock.style.display="block";
   successBlock.style.display="none";
-  failMsg.innerHTML = "<b>Error Details:</b><br>" + escapeHtml(msg) + "<br><br><span style='color:var(--sub)'>Ensure your Netlify <code>UPSTREAM_API_KEY</code> has active USD balance on duskyr.com and your session token is valid.</span>";
+  failMsg.innerHTML = "<b>Error Details:</b><br>" + escapeHtml(msg);
 }
 
 function escapeHtml(s){ return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }
