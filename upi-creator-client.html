@@ -510,25 +510,34 @@ async function createLink(){
     var duskyrData = null;
     try { duskyrData = JSON.parse(rawText); } catch(e){}
 
-    if (duskyrRes.ok && duskyrData && (duskyrData.payment_url || duskyrData.code || duskyrData.order_code || duskyrData.ok)) {
-      var updatedKey = decrementClientKey(key);
-      userKeyInput.value = updatedKey;
-      localStorage.setItem(LS_KEY, updatedKey);
-      setBtnLoading(false);
-      var payUrl = duskyrData.payment_url || ("https://duskyr.com/api/upi/v1/order/" + (duskyrData.code || duskyrData.order_code));
-      var orderCode = duskyrData.code || duskyrData.order_code || ("UPI-" + Date.now().toString(36).toUpperCase());
-      successFlow(payUrl, orderCode);
-      checkKey(updatedKey);
-      return;
-    } else {
-      setBtnLoading(false);
-      var errMsg = (duskyrData && (duskyrData.message || duskyrData.error))
-        ? (duskyrData.message || duskyrData.error)
-        : "Failed to generate link. Make sure session JSON is valid.";
-      failFlow(errMsg, false);
-      checkKey(key);
-      return;
+    if (duskyrRes.ok && duskyrData) {
+      var payUrl = duskyrData.payment_url || duskyrData.url || (duskyrData.data && (duskyrData.data.payment_url || duskyrData.data.url));
+      
+      if (!payUrl && (duskyrData.checkout_session_id || (duskyrData.data && duskyrData.data.checkout_session_id))) {
+        var sessId = duskyrData.checkout_session_id || (duskyrData.data && duskyrData.data.checkout_session_id);
+        var clientSec = duskyrData.client_secret || (duskyrData.data && duskyrData.data.client_secret) || "";
+        var hashSec = clientSec.includes("_secret_") ? ("#" + clientSec.split("_secret_")[1]) : "";
+        payUrl = "https://checkout.stripe.com/c/pay/" + sessId + hashSec;
+      }
+
+      if (payUrl) {
+        var updatedKey = decrementClientKey(key);
+        userKeyInput.value = updatedKey;
+        localStorage.setItem(LS_KEY, updatedKey);
+        setBtnLoading(false);
+        var orderCode = duskyrData.code || duskyrData.order_code || (duskyrData.data && (duskyrData.data.code || duskyrData.data.order_code)) || ("UPI-" + Date.now().toString(36).toUpperCase());
+        successFlow(payUrl, orderCode);
+        checkKey(updatedKey);
+        return;
+      }
     }
+    
+    setBtnLoading(false);
+    var errMsg = (duskyrData && (duskyrData.message || duskyrData.error))
+      ? (duskyrData.message || duskyrData.error)
+      : "Failed to generate link. Make sure session JSON is valid.";
+    failFlow(errMsg, false);
+    checkKey(key);
   } catch(err) {
     setBtnLoading(false);
     failFlow("Network Error: " + err.message, false);
