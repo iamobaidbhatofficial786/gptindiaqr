@@ -404,17 +404,8 @@ function checkKey(k){
   }
   
   var cleanKey = k.trim();
-  if(cleanKey.startsWith("upi_live_") || cleanKey.toUpperCase().startsWith("DIRECT_")){
-    balVal.innerHTML = "<b>Direct Key Active</b>";
-    sessionInput.disabled = false;
-    createBtn.disabled = false;
-    createBtnLbl.textContent = "Create UPI Link";
-    localStorage.setItem(LS_KEY, cleanKey);
-    return;
-  }
-
-  // Standalone client-side signed key verification (Supports [A-Z0-9])
   var signedMatch = cleanKey.toUpperCase().match(/^GPT(\d+)C(\d+)P-([A-Z0-9]+)-([A-Z0-9]+)$/);
+  
   if (signedMatch) {
     var creds = parseInt(signedMatch[1], 10);
     var initCreds = parseInt(signedMatch[2], 10);
@@ -434,49 +425,13 @@ function checkKey(k){
     return;
   }
 
-  // Any custom or legacy key starting with GPT
-  if (cleanKey.toUpperCase().startsWith("GPT")) {
-    activeCredits = 15;
-    localStorage.setItem(LS_KEY, cleanKey);
-    balVal.innerHTML = "<b>Key Active</b> (15 Credits Available)";
-    sessionInput.disabled = false;
-    createBtn.disabled = false;
-    createBtnLbl.textContent = "Create UPI Link · 1 Credit";
-    return;
-  }
-
-  balVal.textContent = "Checking…";
-  fetch("/api/check-code", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code: cleanKey })
-  })
-  .then(function(r){ return r.json(); })
-  .then(function(d){
-    if(d.ok){
-      activeCredits = d.credits;
-      localStorage.setItem(LS_KEY, cleanKey);
-      if(activeCredits > 0){
-        balVal.innerHTML = "<b>" + activeCredits + "</b> / " + d.initialCredits + " Credits Available";
-        sessionInput.disabled = false;
-        createBtn.disabled = false;
-        createBtnLbl.textContent = "Create UPI Link · 1 Credit";
-      }else{
-        balVal.innerHTML = "<span style='color:var(--err)'>0 Credits Remaining (Top Up Required)</span>";
-        sessionInput.disabled = true;
-        createBtn.disabled = true;
-        createBtnLbl.textContent = "0 Credits Left — Enter New Key";
-      }
-    }else{
-      balVal.innerHTML = "<span style='color:var(--err)'>" + (d.error || "Invalid Key") + "</span>";
-      sessionInput.disabled = true;
-      createBtn.disabled = true;
-      createBtnLbl.textContent = "Invalid Key";
-    }
-  })
-  .catch(function(){
-    balVal.textContent = "Offline Mode Active";
-  });
+  // Accept any non-empty key entered by user
+  activeCredits = 15;
+  localStorage.setItem(LS_KEY, cleanKey);
+  balVal.innerHTML = "<b>Key Active</b> (15 Credits Available)";
+  sessionInput.disabled = false;
+  createBtn.disabled = false;
+  createBtnLbl.textContent = "Create UPI Link · 1 Credit";
 }
 
 activateBtn.addEventListener("click", function(){ checkKey(userKeyInput.value); });
