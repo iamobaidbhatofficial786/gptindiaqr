@@ -15,7 +15,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(__dirname));
 
-// Data persistence directory (Supports local storage & Netlify serverless /tmp directory)
+// Data persistence fallback
 const DATA_DIR = path.join(__dirname, 'data');
 const LOCAL_FILE = path.join(DATA_DIR, 'codes.json');
 const TMP_FILE = path.join('/tmp', 'codes.json');
@@ -56,10 +56,72 @@ function saveCodes(codes) {
   }
 }
 
-function generateCode(prefix = 'GPT') {
-  const rand = crypto.randomBytes(4).toString('hex').toUpperCase();
-  const rand2 = crypto.randomBytes(4).toString('hex').toUpperCase();
-  return `${prefix}-${rand}-${rand2}`;
+// ----------------------------------------------------
+// Cryptographically Signed Key Engine (Stateless & Bulletproof)
+// ----------------------------------------------------
+
+function signKey(credits, nonce, initialPack) {
+  const secret = process.env.ADMIN_PASSWORD || ADMIN_PASSWORD;
+  return crypto.createHmac('sha256', secret)
+    .update(`${credits}:${nonce}:${initialPack}`)
+    .digest('hex')
+    .substring(0, 8)
+    .toUpperCase();
+}
+
+function createSignedKey(credits, initialPack = 15) {
+  const nonce = crypto.randomBytes(4).toString('hex').toUpperCase();
+  const sig = signKey(credits, nonce, initialPack);
+  return `GPT${credits}C${initialPack}P-${nonce}-${sig}`;
+}
+
+function verifyAndParseKey(keyStr) {
+  if (!keyStr) return null;
+  const clean = keyStr.trim().toUpperCase();
+
+  // Pattern: GPT<credits>C<initialPack>P-<nonce>-<sig>
+  // e.g. GPT15C15P-A1B2C3D4-E5F6G7H8 or GPT14C15P-A1B2C3D4-XXXX
+  const match = clean.match(/^GPT(\d+)C(\d+)P-([A-F0-9]+)-([A-F0-9]+)$/);
+  if (match) {
+    const credits = parseInt(match[1], 10);
+    const initialPack = parseInt(match[2], 10);
+    const nonce = match[3];
+    const sig = match[4];
+
+    const expectedSig = signKey(credits, nonce, initialPack);
+    if (sig === expectedSig) {
+      return {
+        code: clean,
+        credits: credits,
+        initialCredits: initialPack,
+        nonce: nonce,
+        isSigned: true
+      };
+    }
+  }
+
+  // Legacy format: GPT-200-XXXX-XXXX or GPT-20-XXXX-XXXX
+  const legacyMatch = clean.match(/^GPT-(\d+)-([A-F0-9]+)-([A-F0-9]+)$/);
+  if (legacyMatch) {
+    const packPrice = legacyMatch[1];
+    const nonce = legacyMatch[2] + legacyMatch[3];
+    const initialPack = packPrice === '200' ? 15 : 1;
+    
+    // Convert legacy key on-the-fly to signed format
+    const sig = signKey(initialPack, nonce, initialPack);
+    const signedCode = `GPT${initialPack}C${initialPack}P-${nonce}-${sig}`;
+    
+    return {
+      code: signedCode,
+      credits: initialPack,
+      initialCredits: initialPack,
+      nonce: nonce,
+      isSigned: true,
+      convertedFromLegacy: true
+    };
+  }
+
+  return null;
 }
 
 // ----------------------------------------------------
@@ -96,6 +158,18 @@ app.post(['/api/check-code', '/check-code'], (req, res) => {
     });
   }
 
+  // Try verifying as Cryptographically Signed Key (Stateless & Serverless Immune)
+  const signedInfo = verifyAndParseKey(cleanCode);
+  if (signedInfo) {
+    return res.json({
+      ok: true,
+      code: signedInfo.code,
+      credits: signedInfo.credits,
+      initialCredits: signedInfo.initialCredits
+    });
+  }
+
+  // Check store fallback
   const codes = loadCodes();
   const keyData = codes[cleanCode.toUpperCase()];
 
@@ -125,6 +199,7 @@ app.post(['/api/create-link', '/create-link'], async (req, res) => {
   const cleanCode = code.trim();
   let upstreamKey = process.env.UPSTREAM_API_KEY ? process.env.UPSTREAM_API_KEY.trim() : '';
   let isDirectKey = false;
+  let signedInfo = null;
   let keyData = null;
   let codes = {};
 
@@ -132,15 +207,22 @@ app.post(['/api/create-link', '/create-link'], async (req, res) => {
     upstreamKey = cleanCode;
     isDirectKey = true;
   } else {
-    codes = loadCodes();
-    keyData = codes[cleanCode.toUpperCase()];
+    signedInfo = verifyAndParseKey(cleanCode);
+    if (signedInfo) {
+      if (signedInfo.credits < 1) {
+        return res.status(403).json({ ok: false, error: 'Insufficient credits on this key. Please top up or enter a new key.' });
+      }
+    } else {
+      codes = loadCodes();
+      keyData = codes[cleanCode.toUpperCase()];
 
-    if (!keyData) {
-      return res.status(404).json({ ok: false, error: 'Invalid redemption key.' });
-    }
+      if (!keyData) {
+        return res.status(404).json({ ok: false, error: 'Invalid redemption key.' });
+      }
 
-    if (keyData.credits < 1) {
-      return res.status(403).json({ ok: false, error: 'Insufficient credits on this key. Please top up or enter a new key.' });
+      if (keyData.credits < 1) {
+        return res.status(403).json({ ok: false, error: 'Insufficient credits on this key. Please top up or enter a new key.' });
+      }
     }
   }
 
@@ -175,23 +257,28 @@ app.post(['/api/create-link', '/create-link'], async (req, res) => {
     const data = await upstreamRes.json();
 
     if (upstreamRes.ok && data && (data.code || data.order_code || data.status === 'processing' || data.payment_url || data.ok)) {
-      // Deduct 1 credit automatically for redemption codes
-      if (!isDirectKey && keyData) {
-        keyData.credits = Math.max(0, keyData.credits - 1);
-        keyData.usage_history = keyData.usage_history || [];
-        keyData.usage_history.push({
-          timestamp: new Date().toISOString(),
-          order_code: data.code || data.order_code || null,
-          reference: reference || null
-        });
-        codes[cleanCode.toUpperCase()] = keyData;
-        saveCodes(codes);
+      let updatedKey = cleanCode;
+      let newRemainingCredits = 999;
+
+      if (!isDirectKey) {
+        if (signedInfo) {
+          const newCredits = Math.max(0, signedInfo.credits - 1);
+          const sig = signKey(newCredits, signedInfo.nonce, signedInfo.initialCredits);
+          updatedKey = `GPT${newCredits}C${signedInfo.initialCredits}P-${signedInfo.nonce}-${sig}`;
+          newRemainingCredits = newCredits;
+        } else if (keyData) {
+          keyData.credits = Math.max(0, keyData.credits - 1);
+          newRemainingCredits = keyData.credits;
+          codes[cleanCode.toUpperCase()] = keyData;
+          saveCodes(codes);
+        }
       }
 
       return res.json({
         ok: true,
         data: data,
-        remaining_credits: isDirectKey ? 999 : keyData.credits
+        updated_key: updatedKey,
+        remaining_credits: newRemainingCredits
       });
     } else {
       const errMsg = (data && (data.message || data.error))
@@ -253,11 +340,11 @@ app.post(['/api/admin/generate-keys', '/admin/generate-keys'], checkAdminAuth, (
   const { type, count = 1 } = req.body || {};
   
   let credits = 1;
-  let prefix = 'GPT-20';
+  let packPrice = 20;
 
   if (type === 'pack15' || req.body.credits === 15) {
     credits = 15;
-    prefix = 'GPT-200';
+    packPrice = 200;
   }
 
   const numKeys = Math.min(Math.max(1, parseInt(count) || 1), 50);
@@ -265,7 +352,7 @@ app.post(['/api/admin/generate-keys', '/admin/generate-keys'], checkAdminAuth, (
   const generated = [];
 
   for (let i = 0; i < numKeys; i++) {
-    const keyStr = generateCode(prefix);
+    const keyStr = createSignedKey(credits, credits);
     const keyObj = {
       code: keyStr,
       credits: credits,
