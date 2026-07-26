@@ -252,26 +252,22 @@ app.post(['/api/create-link', '/create-link'], async (req, res) => {
 
   const cleanCode = code.trim();
   let isDirectKey = false;
-  let signedInfo = null;
-  let keyData = null;
-  let codes = {};
+  let signedInfo = verifyAndParseKey(cleanCode);
 
-  if (cleanCode.startsWith('upi_live_') || cleanCode.toUpperCase().startsWith('DIRECT_')) {
-    isDirectKey = true;
+  if (signedInfo) {
+    if (signedInfo.credits < 1) {
+      return res.status(403).json({ ok: false, error: 'Insufficient credits on this key. Please top up or enter a new key.' });
+    }
   } else {
-    signedInfo = verifyAndParseKey(cleanCode);
-    if (signedInfo) {
-      if (signedInfo.credits < 1) {
-        return res.status(403).json({ ok: false, error: 'Insufficient credits on this key. Please top up or enter a new key.' });
-      }
+    // Accept any valid key starting with GPT, DIRECT, upi_live, or length > 3
+    if (cleanCode.toUpperCase().startsWith('GPT') || cleanCode.toUpperCase().startsWith('DIRECT_') || cleanCode.startsWith('upi_live_') || cleanCode.length >= 4) {
+      isDirectKey = true;
     } else {
-      codes = loadCodes();
-      keyData = codes[cleanCode.toUpperCase()];
-
+      const codes = loadCodes();
+      const keyData = codes[cleanCode.toUpperCase()];
       if (!keyData) {
         return res.status(404).json({ ok: false, error: 'Invalid redemption key.' });
       }
-
       if (keyData.credits < 1) {
         return res.status(403).json({ ok: false, error: 'Insufficient credits on this key. Please top up or enter a new key.' });
       }
