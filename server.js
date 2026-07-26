@@ -15,7 +15,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(__dirname));
 
-// Data persistence fallback
+// Data persistence directory (Supports local storage & Netlify serverless /tmp directory)
 const DATA_DIR = path.join(__dirname, 'data');
 const LOCAL_FILE = path.join(DATA_DIR, 'codes.json');
 const TMP_FILE = path.join('/tmp', 'codes.json');
@@ -80,7 +80,6 @@ function verifyAndParseKey(keyStr) {
   const clean = keyStr.trim().toUpperCase();
 
   // Pattern: GPT<credits>C<initialPack>P-<nonce>-<sig>
-  // e.g. GPT15C15P-A1B2C3D4-E5F6G7H8 or GPT14C15P-A1B2C3D4-XXXX
   const match = clean.match(/^GPT(\d+)C(\d+)P-([A-F0-9]+)-([A-F0-9]+)$/);
   if (match) {
     const credits = parseInt(match[1], 10);
@@ -100,14 +99,13 @@ function verifyAndParseKey(keyStr) {
     }
   }
 
-  // Legacy format: GPT-200-XXXX-XXXX or GPT-20-XXXX-XXXX
+  // Legacy format: GPT-200-XXXX-XXXX or GPT-25-XXXX-XXXX
   const legacyMatch = clean.match(/^GPT-(\d+)-([A-F0-9]+)-([A-F0-9]+)$/);
   if (legacyMatch) {
     const packPrice = legacyMatch[1];
     const nonce = legacyMatch[2] + legacyMatch[3];
     const initialPack = packPrice === '200' ? 15 : 1;
     
-    // Convert legacy key on-the-fly to signed format
     const sig = signKey(initialPack, nonce, initialPack);
     const signedCode = `GPT${initialPack}C${initialPack}P-${nonce}-${sig}`;
     
@@ -134,7 +132,7 @@ app.get(['/api/plans', '/plans'], (req, res) => {
     upi_id: PAYMENT_UPI_ID,
     plans: [
       { id: 'pack15', name: '15 Credits Pack', price: 200, credits: 15, perCredit: '13.3' },
-      { id: 'pack1', name: '1 Credit Pack', price: 20, credits: 1, perCredit: '20.0' }
+      { id: 'pack1', name: '1 Credit Pack', price: 25, credits: 1, perCredit: '25.0' }
     ]
   });
 });
@@ -158,7 +156,7 @@ app.post(['/api/check-code', '/check-code'], (req, res) => {
     });
   }
 
-  // Try verifying as Cryptographically Signed Key (Stateless & Serverless Immune)
+  // Try verifying as Cryptographically Signed Key
   const signedInfo = verifyAndParseKey(cleanCode);
   if (signedInfo) {
     return res.json({
@@ -340,7 +338,7 @@ app.post(['/api/admin/generate-keys', '/admin/generate-keys'], checkAdminAuth, (
   const { type, count = 1 } = req.body || {};
   
   let credits = 1;
-  let packPrice = 20;
+  let packPrice = 25;
 
   if (type === 'pack15' || req.body.credits === 15) {
     credits = 15;

@@ -188,10 +188,10 @@
         <div class="plan-price">₹200</div>
         <div class="plan-desc">15 ChatGPT QR Links (₹13.3 / link)</div>
       </div>
-      <div class="plan-card" onclick="selectPlan(20, 1, this)">
+      <div class="plan-card" onclick="selectPlan(25, 1, this)">
         <div class="plan-title">1 Credit Pack</div>
-        <div class="plan-price">₹20</div>
-        <div class="plan-desc">1 ChatGPT QR Link (₹20 / link)</div>
+        <div class="plan-price">₹25</div>
+        <div class="plan-desc">1 ChatGPT QR Link (₹25 / link)</div>
       </div>
     </div>
 
@@ -202,7 +202,7 @@
         <button class="icon-btn" onclick="copyUpiId()">Copy UPI ID</button>
         <button class="icon-btn" style="border-color:var(--ok);color:var(--ok)" onclick="openPayModal()">Show Payment QR</button>
       </div>
-      <p class="hint" style="margin-top:10px">After paying ₹200 or ₹20 to <b>iamubbb@ibl</b>, contact Admin to receive your <b>Redemption Key</b>!</p>
+      <p class="hint" style="margin-top:10px">After paying ₹200 or ₹25 to <b>iamubbb@ibl</b>, contact Admin to receive your <b>Redemption Key</b>!</p>
     </div>
   </div>
 
@@ -375,7 +375,7 @@ function copyUpiId(){
 
 function openPayModal(){
   var upiUrl = "upi://pay?pa=iamubbb@ibl&pn=GPT%20UPI&am=" + currentPlanPrice + "&cu=INR";
-  $("modalPlanTitle").textContent = (currentPlanCredits === 15 ? "15 Credits Pack — ₹200" : "1 Credit Pack — ₹20");
+  $("modalPlanTitle").textContent = (currentPlanCredits === 15 ? "15 Credits Pack — ₹200" : "1 Credit Pack — ₹25");
   drawQR($("modalQr"), upiUrl);
   $("payModal").style.display = "flex";
 }

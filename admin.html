@@ -85,7 +85,7 @@
           <label>Select Plan Pack</label>
           <select id="planType">
             <option value="pack15">₹200 Plan — 15 Credits Pack</option>
-            <option value="pack1">₹20 Plan — 1 Credit Pack</option>
+            <option value="pack1">₹25 Plan — 1 Credit Pack</option>
           </select>
         </div>
         <div style="width:120px">
@@ -189,7 +189,7 @@
         tr.innerHTML = `
           <td class="code-cell">${k.code}</td>
           <td><b>${k.credits}</b> / ${k.initialCredits}</td>
-          <td>${k.initialCredits === 15 ? "₹200 (15 Creds)" : "₹20 (1 Cred)"}</td>
+          <td>${k.initialCredits === 15 ? "₹200 (15 Creds)" : "₹25 (1 Cred)"}</td>
           <td>${new Date(k.created_at).toLocaleString()}</td>
           <td><button class="copy-sm" onclick="copyKey('${k.code}')">Copy Key</button></td>
         `;
