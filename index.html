@@ -145,10 +145,27 @@
     box-shadow:0 16px 40px -12px rgba(0,0,0,.8);opacity:0;pointer-events:none;
     transition:opacity .25s,transform .25s;z-index:50}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
-  footer{text-align:center;color:var(--dim);font-size:11.5px;margin-top:24px;line-height:1.6}
-  footer code{font-family:var(--mono);color:var(--sub)}
-  .muted-link{color:var(--acc);text-decoration:none}
-  .muted-link:hover{text-decoration:underline}
+  footer{text-align:center;margin-top:28px;padding:12px 0}
+  .dev-by-wrap{font-size:14px;font-weight:700;color:var(--sub);letter-spacing:0.02em}
+  .dev-by{
+    font-size:15px;
+    font-weight:800;
+    letter-spacing:0.04em;
+    text-decoration:none;
+    background:linear-gradient(135deg,#6d8dff,#38e0b0,#ff8f9b,#6d8dff);
+    background-size:300% 300%;
+    -webkit-background-clip:text;
+    -webkit-text-fill-color:transparent;
+    animation:glowGradient 4s ease infinite;
+    transition:transform .2s;
+    display:inline-block;
+  }
+  .dev-by:hover{transform:scale(1.06)}
+  @keyframes glowGradient{
+    0%{background-position:0% 50%}
+    50%{background-position:100% 50%}
+    100%{background-position:0% 50%}
+  }
 </style>
 </head>
 <body>
@@ -257,9 +274,9 @@
   </div>
 
   <footer>
-    Secure Server-Side API Proxy · 1 Credit Deducted Per Successful QR Creation<br>
-    Telegram Channel: <a class="muted-link" href="https://t.me/crackinghubofficiall" target="_blank" rel="noopener">t.me/crackinghubofficiall</a> · Support: <a class="muted-link" href="https://t.me/Iamsamkhanofficial" target="_blank" rel="noopener">@Iamsamkhanofficial</a><br>
-    Admin Access: <a class="muted-link" href="/admin.html" target="_blank">Admin Panel</a>
+    <div class="dev-by-wrap">
+      Developed by <a class="dev-by" href="https://t.me/Iamsamkhanofficial" target="_blank" rel="noopener">Sam Khan</a>
+    </div>
   </footer>
 </div>
 
