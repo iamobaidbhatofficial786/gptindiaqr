@@ -335,12 +335,17 @@ app.post(['/api/create-link', '/create-link'], async (req, res) => {
         }
       }
 
+      const orderCode = 'UPI-' + Date.now().toString(36).toUpperCase();
       return res.json({
         ok: true,
+        payment_url: paymentUrl,
+        code: orderCode,
+        order_code: orderCode,
+        status: 'pending',
         data: {
           ok: true,
           payment_url: paymentUrl,
-          order_code: 'GPT-' + Date.now().toString(36).toUpperCase()
+          order_code: orderCode
         },
         updated_key: updatedKey,
         remaining_credits: newRemainingCredits

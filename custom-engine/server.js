@@ -88,10 +88,13 @@ app.post(['/v1/create', '/api/create-link', '/create-link'], async (req, res) =>
     }
 
     if (openAiRes.ok && openAiData && paymentUrl) {
+      const orderCode = 'UPI-' + Date.now().toString(36).toUpperCase();
       return res.json({
         ok: true,
         payment_url: paymentUrl,
-        order_code: 'CUSTOM-' + Date.now().toString(36).toUpperCase()
+        code: orderCode,
+        order_code: orderCode,
+        status: 'pending'
       });
     } else {
       return res.status(openAiRes.status || 400).json({
