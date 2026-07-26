@@ -515,15 +515,20 @@ async function createLink(){
     var resData = null;
     try { resData = JSON.parse(txt); } catch(e){}
 
-    if (r.ok && resData && (resData.ok || resData.payment_url || (resData.data && resData.data.payment_url))) {
+    if (r.ok && resData && resData.ok && (resData.payment_url || (resData.data && resData.data.payment_url))) {
       var d = resData.data || resData;
       var payUrl = d.payment_url || d.url;
       var updatedKey = resData.updated_key || decrementClientKey(key);
       userKeyInput.value = updatedKey;
       localStorage.setItem(LS_KEY, updatedKey);
       setBtnLoading(false);
-      successFlow(payUrl || "https://chatgpt.com/?model=gpt-4o&subscribe=1", d.order_code || ("GPT-" + Date.now().toString(36).toUpperCase()));
+      successFlow(payUrl, d.order_code || ("GPT-" + Date.now().toString(36).toUpperCase()));
       checkKey(updatedKey);
+      return;
+    } else if (resData && (resData.error || resData.message)) {
+      setBtnLoading(false);
+      failFlow("OpenAI Checkout Error: " + (resData.error || resData.message), false);
+      checkKey(key);
       return;
     }
   } catch(e) {
@@ -532,11 +537,14 @@ async function createLink(){
 
   // Step 2: Direct Fallback Engine (Zero API Cost)
   try {
+    var deviceId = '3a7d' + Math.random().toString(36).substring(2, 15);
     var openAiRes = await fetch("https://chatgpt.com/backend-api/payments/checkout", {
       method: "POST",
       headers: {
         "Authorization": "Bearer " + token,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "Oai-Device-Id": deviceId,
+        "Oai-Language": "en-US"
       },
       body: JSON.stringify({ plan: "plus", payment_provider: "stripe" })
     });
@@ -544,21 +552,27 @@ async function createLink(){
     var openAiData = null;
     try { openAiData = JSON.parse(rawTxt); } catch(e){}
 
-    var checkoutUrl = (openAiData && openAiData.url) ? openAiData.url : "https://chatgpt.com/?model=gpt-4o&subscribe=1";
-    var updatedKey = decrementClientKey(key);
-    userKeyInput.value = updatedKey;
-    localStorage.setItem(LS_KEY, updatedKey);
-    setBtnLoading(false);
-    successFlow(checkoutUrl, "GPT-" + Date.now().toString(36).toUpperCase());
-    checkKey(updatedKey);
+    if (openAiRes.ok && openAiData && openAiData.url) {
+      var updatedKey = decrementClientKey(key);
+      userKeyInput.value = updatedKey;
+      localStorage.setItem(LS_KEY, updatedKey);
+      setBtnLoading(false);
+      successFlow(openAiData.url, "GPT-" + Date.now().toString(36).toUpperCase());
+      checkKey(updatedKey);
+      return;
+    } else {
+      setBtnLoading(false);
+      var errStr = (openAiData && (openAiData.detail || openAiData.message))
+        ? (typeof openAiData.detail === 'string' ? openAiData.detail : JSON.stringify(openAiData.detail || openAiData.message))
+        : "OpenAI Session Rejected: Make sure your ChatGPT account is active and copy fresh session JSON from chatgpt.com/api/auth/session";
+      failFlow("OpenAI Checkout Error: " + errStr, false);
+      checkKey(key);
+      return;
+    }
   } catch(err) {
-    var checkoutUrl = "https://chatgpt.com/?model=gpt-4o&subscribe=1";
-    var updatedKey = decrementClientKey(key);
-    userKeyInput.value = updatedKey;
-    localStorage.setItem(LS_KEY, updatedKey);
     setBtnLoading(false);
-    successFlow(checkoutUrl, "GPT-" + Date.now().toString(36).toUpperCase());
-    checkKey(updatedKey);
+    failFlow("Checkout Error: " + err.message, false);
+    checkKey(key);
   }
 }
 

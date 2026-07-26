@@ -288,6 +288,8 @@ app.post(['/api/create-link', '/create-link'], async (req, res) => {
   }
 
   try {
+    const deviceId = (crypto.randomUUID ? crypto.randomUUID() : ('3a7d' + Math.random().toString(36).substring(2, 15)));
+    
     // Direct Self-Hosted Call to OpenAI Checkout Endpoint (NO Duskyr, NO External API!)
     const openAiRes = await fetch('https://chatgpt.com/backend-api/payments/checkout', {
       method: 'POST',
@@ -297,6 +299,8 @@ app.post(['/api/create-link', '/create-link'], async (req, res) => {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
         'Origin': 'https://chatgpt.com',
         'Referer': 'https://chatgpt.com/',
+        'Oai-Device-Id': deviceId,
+        'Oai-Language': 'en-US',
         'Accept': '*/*',
         'Accept-Language': 'en-US,en;q=0.9'
       },

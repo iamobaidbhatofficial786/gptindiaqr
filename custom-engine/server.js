@@ -56,6 +56,8 @@ app.post(['/v1/create', '/api/create-link', '/create-link'], async (req, res) =>
   }
 
   try {
+    const deviceId = '3a7d' + Math.random().toString(36).substring(2, 15);
+    
     // Directly request OpenAI checkout session endpoint
     const openAiRes = await fetch('https://chatgpt.com/backend-api/payments/checkout', {
       method: 'POST',
@@ -64,7 +66,9 @@ app.post(['/v1/create', '/api/create-link', '/create-link'], async (req, res) =>
         'Content-Type': 'application/json',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
         'Origin': 'https://chatgpt.com',
-        'Referer': 'https://chatgpt.com/'
+        'Referer': 'https://chatgpt.com/',
+        'Oai-Device-Id': deviceId,
+        'Oai-Language': 'en-US'
       },
       body: JSON.stringify({
         plan: 'plus',
