@@ -195,7 +195,7 @@ app.post(['/api/create-link', '/create-link'], async (req, res) => {
   }
 
   const cleanCode = code.trim();
-  let upstreamKey = process.env.UPSTREAM_API_KEY ? process.env.UPSTREAM_API_KEY.trim() : '';
+  let upstreamKey = process.env.UPSTREAM_API_KEY ? process.env.UPSTREAM_API_KEY.trim() : 'upi_live_default';
   let isDirectKey = false;
   let signedInfo = null;
   let keyData = null;
@@ -224,14 +224,7 @@ app.post(['/api/create-link', '/create-link'], async (req, res) => {
     }
   }
 
-  if (!upstreamKey || upstreamKey === 'upi_live_your_actual_key_here') {
-    return res.status(500).json({
-      ok: false,
-      error: 'Server UPSTREAM_API_KEY is not configured in Netlify environment variables.'
-    });
-  }
-
-  // Format session_json payload required by duskyr API /v1/create
+  // Format session_json payload required by upstream API
   let sessionJsonStr = session;
   if (typeof session === 'object') {
     sessionJsonStr = JSON.stringify(session);
@@ -239,8 +232,11 @@ app.post(['/api/create-link', '/create-link'], async (req, res) => {
     sessionJsonStr = session.trim();
   }
 
+  const targetBase = (process.env.API_BASE || UPSTREAM_API_BASE).replace(/\/+$/, '');
+  const targetUrl = targetBase.endsWith('/v1/create') ? targetBase : `${targetBase}/v1/create`;
+
   try {
-    const upstreamRes = await fetch(`${UPSTREAM_API_BASE}/v1/create`, {
+    const upstreamRes = await fetch(targetUrl, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${upstreamKey}`,
@@ -252,7 +248,17 @@ app.post(['/api/create-link', '/create-link'], async (req, res) => {
       })
     });
 
-    const data = await upstreamRes.json();
+    const rawText = await upstreamRes.text();
+    let data = {};
+    try {
+      data = JSON.parse(rawText);
+    } catch (e) {
+      console.error('Non-JSON response from upstream:', rawText.substring(0, 300));
+      return res.status(upstreamRes.status || 500).json({
+        ok: false,
+        error: `Upstream engine returned an HTML/non-JSON response (${upstreamRes.status}). If using Render free tier, wait 30s for server cold-start or check API_BASE URL.`
+      });
+    }
 
     if (upstreamRes.ok && data && (data.code || data.order_code || data.status === 'processing' || data.payment_url || data.ok)) {
       let updatedKey = cleanCode;
@@ -294,16 +300,18 @@ app.get(['/api/order-status/:orderCode', '/order-status/:orderCode'], async (req
   const { orderCode } = req.params;
   const upstreamKey = (process.env.UPSTREAM_API_KEY || '').trim();
 
-  if (!upstreamKey) {
-    return res.status(500).json({ ok: false, error: 'Server upstream key missing.' });
-  }
-
   try {
-    const upstreamRes = await fetch(`${UPSTREAM_API_BASE}/v1/order/${encodeURIComponent(orderCode)}`, {
+    const targetBase = (process.env.API_BASE || UPSTREAM_API_BASE).replace(/\/+$/, '');
+    const upstreamRes = await fetch(`${targetBase}/v1/order/${encodeURIComponent(orderCode)}`, {
       headers: { 'Authorization': `Bearer ${upstreamKey}` }
     });
-    const data = await upstreamRes.json();
-    return res.json(data);
+    const rawText = await upstreamRes.text();
+    try {
+      const data = JSON.parse(rawText);
+      return res.json(data);
+    } catch(e) {
+      return res.json({ ok: false, error: 'Status endpoint returned non-JSON' });
+    }
   } catch (err) {
     return res.status(500).json({ ok: false, error: 'Failed to poll status: ' + err.message });
   }

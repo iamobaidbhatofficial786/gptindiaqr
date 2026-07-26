@@ -38,20 +38,21 @@ function extractAccessToken(sessionData) {
   return null;
 }
 
-app.get('/health', (req, res) => {
-  res.json({ ok: true, status: 'Custom ChatGPT UPI Engine Running' });
+app.get(['/', '/health', '/api/health'], (req, res) => {
+  res.json({ ok: true, engine: 'Custom Self-Hosted ChatGPT UPI Engine v1.0.0', status: 'active' });
 });
 
-app.post(['/v1/create', '/api/create-link'], async (req, res) => {
-  const { session_json } = req.body || {};
+app.post(['/v1/create', '/api/create-link', '/create-link'], async (req, res) => {
+  const { session_json, session } = req.body || {};
+  const inputData = session_json || session;
   
-  if (!session_json) {
+  if (!inputData) {
     return res.status(400).json({ ok: false, error: 'session_json is required.' });
   }
 
-  const token = extractAccessToken(session_json);
+  const token = extractAccessToken(inputData);
   if (!token) {
-    return res.status(400).json({ ok: false, error: 'Could not extract valid accessToken from session_json.' });
+    return res.status(400).json({ ok: false, error: 'Could not extract valid accessToken from session.' });
   }
 
   try {
