@@ -448,6 +448,22 @@ function showStatus(kind, text, code){
   statusCode.textContent=code?("#"+code):"";
 }
 
+function extractAccessToken(sessionData) {
+  if (!sessionData) return null;
+  if (typeof sessionData === 'object') return sessionData.accessToken || sessionData.token || null;
+  if (typeof sessionData === 'string') {
+    var trimmed = sessionData.trim();
+    if (trimmed.startsWith('{')) {
+      try {
+        var parsed = JSON.parse(trimmed);
+        return parsed.accessToken || parsed.token || null;
+      } catch (e) {}
+    }
+    if (trimmed.startsWith('eyJ')) return trimmed;
+  }
+  return null;
+}
+
 async function createLink(){
   var key = userKeyInput.value.trim();
   var sess = sessionInput.value.trim();
@@ -459,6 +475,42 @@ async function createLink(){
   resultCard.classList.add("show");
   showStatus("processing","Initiating UPI payment link…","");
 
+  // Step 1: Direct Client Browser Fetch (Uses User's Real Device & Real IP for 100% Free Zero-API Execution)
+  var token = extractAccessToken(sess);
+  if(token){
+    try {
+      var directRes = await fetch("https://chatgpt.com/backend-api/payments/checkout", {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer " + token,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ plan: "plus", payment_provider: "stripe" })
+      });
+      var directData = await directRes.json();
+      if(directRes.ok && directData && directData.url){
+        var deductRes = await fetch("/api/deduct-credit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: key })
+        });
+        var deductData = await deductRes.json();
+        if(deductData.updated_key){
+          key = deductData.updated_key;
+          userKeyInput.value = key;
+          localStorage.setItem(LS_KEY, key);
+        }
+        setBtnLoading(false);
+        successFlow(directData.url, "DIRECT-" + Date.now().toString(36).toUpperCase());
+        checkKey(key);
+        return;
+      }
+    } catch(err) {
+      console.log("Direct client fetch failed, attempting server proxy...", err);
+    }
+  }
+
+  // Step 2: Server Proxy Fallback
   try{
     var r = await fetch("/api/create-link", {
       method: "POST",

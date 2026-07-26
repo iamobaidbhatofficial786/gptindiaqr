@@ -209,6 +209,36 @@ app.post(['/api/check-code', '/check-code'], (req, res) => {
   });
 });
 
+// Endpoint to deduct 1 credit upon successful client-side creation
+app.post(['/api/deduct-credit', '/deduct-credit'], (req, res) => {
+  const { code } = req.body || {};
+  if (!code) return res.status(400).json({ ok: false, error: 'Key required.' });
+
+  const cleanCode = code.trim();
+  if (cleanCode.startsWith('upi_live_') || cleanCode.toUpperCase().startsWith('DIRECT_')) {
+    return res.json({ ok: true, updated_key: cleanCode, remaining_credits: 999 });
+  }
+
+  const signedInfo = verifyAndParseKey(cleanCode);
+  if (signedInfo) {
+    const newCredits = Math.max(0, signedInfo.credits - 1);
+    const sig = signKey(newCredits, signedInfo.nonce, signedInfo.initialCredits);
+    const updatedKey = `GPT${newCredits}C${signedInfo.initialCredits}P-${signedInfo.nonce}-${sig}`;
+    return res.json({ ok: true, updated_key: updatedKey, remaining_credits: newCredits });
+  }
+
+  const codes = loadCodes();
+  const keyData = codes[cleanCode.toUpperCase()];
+  if (keyData) {
+    keyData.credits = Math.max(0, keyData.credits - 1);
+    codes[cleanCode.toUpperCase()] = keyData;
+    saveCodes(codes);
+    return res.json({ ok: true, updated_key: cleanCode, remaining_credits: keyData.credits });
+  }
+
+  return res.json({ ok: true, updated_key: cleanCode, remaining_credits: 0 });
+});
+
 // 100% Self-Hosted API-Free Link Creation Endpoint
 app.post(['/api/create-link', '/create-link'], async (req, res) => {
   const { code, session, reference } = req.body || {};
@@ -266,7 +296,9 @@ app.post(['/api/create-link', '/create-link'], async (req, res) => {
         'Content-Type': 'application/json',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
         'Origin': 'https://chatgpt.com',
-        'Referer': 'https://chatgpt.com/'
+        'Referer': 'https://chatgpt.com/',
+        'Accept': '*/*',
+        'Accept-Language': 'en-US,en;q=0.9'
       },
       body: JSON.stringify({
         plan: 'plus',
