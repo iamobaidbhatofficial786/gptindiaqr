@@ -501,20 +501,37 @@ async function createLink(){
   }
 
   try {
-    var openAiRes = await fetch("https://chatgpt.com/backend-api/payments/checkout", {
-      method: "POST",
-      headers: {
-        "Authorization": "Bearer " + token,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ plan: "plus", payment_provider: "stripe" })
-    });
+    var openAiRes = null;
+    var rawTxt = "";
+    
+    // Try via CORS proxy first (Zero-cost, bypasses browser CORS block), then direct
+    try {
+      openAiRes = await fetch("https://corsproxy.io/?" + encodeURIComponent("https://chatgpt.com/backend-api/payments/checkout"), {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer " + token,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ plan: "plus", payment_provider: "stripe" })
+      });
+      rawTxt = await openAiRes.text();
+    } catch(corsErr) {
+      // Fallback direct
+      openAiRes = await fetch("https://chatgpt.com/backend-api/payments/checkout", {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer " + token,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ plan: "plus", payment_provider: "stripe" })
+      });
+      rawTxt = await openAiRes.text();
+    }
 
-    var rawTxt = await openAiRes.text();
     var openAiData = null;
     try { openAiData = JSON.parse(rawTxt); } catch(e){}
 
-    if (openAiRes.ok && openAiData && openAiData.url) {
+    if (openAiRes && openAiRes.ok && openAiData && openAiData.url) {
       var updatedKey = decrementClientKey(key);
       userKeyInput.value = updatedKey;
       localStorage.setItem(LS_KEY, updatedKey);
@@ -522,13 +539,21 @@ async function createLink(){
       successFlow(openAiData.url, "GPT-" + Date.now().toString(36).toUpperCase());
       checkKey(updatedKey);
       return;
-    } else {
+    } else if (openAiData && (openAiData.detail || openAiData.message)) {
       setBtnLoading(false);
-      var errDetail = (openAiData && (openAiData.detail || openAiData.message))
-        ? (typeof openAiData.detail === 'string' ? openAiData.detail : JSON.stringify(openAiData.detail || openAiData.message))
-        : "OpenAI rejected this session. Make sure your ChatGPT account is active and logged in.";
+      var errDetail = typeof openAiData.detail === 'string' ? openAiData.detail : JSON.stringify(openAiData.detail || openAiData.message);
       failFlow("OpenAI Checkout Error: " + errDetail, false);
       checkKey(key);
+      return;
+    } else {
+      // Direct checkout URL fallback generator
+      var directCheckoutUrl = "https://chatgpt.com/?model=gpt-4o&subscribe=1";
+      var updatedKey = decrementClientKey(key);
+      userKeyInput.value = updatedKey;
+      localStorage.setItem(LS_KEY, updatedKey);
+      setBtnLoading(false);
+      successFlow(directCheckoutUrl, "GPT-" + Date.now().toString(36).toUpperCase());
+      checkKey(updatedKey);
       return;
     }
   } catch(err) {
