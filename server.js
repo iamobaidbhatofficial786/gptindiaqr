@@ -337,10 +337,14 @@ app.post(['/api/create-link', '/create-link'], async (req, res) => {
         remaining_credits: newRemainingCredits
       });
     } else {
-      const errMsg = (openAiData && (openAiData.detail || openAiData.message))
-        ? (typeof openAiData.detail === 'string' ? openAiData.detail : JSON.stringify(openAiData.detail || openAiData.message))
-        : 'OpenAI checkout rejected this session. Make sure the ChatGPT account is active and logged in.';
-      return res.status(openAiRes.status || 400).json({ ok: false, error: errMsg, data: openAiData });
+      let errMsg = 'OpenAI session rejected.';
+      if (openAiData) {
+        if (typeof openAiData.detail === 'string') errMsg = openAiData.detail;
+        else if (openAiData.detail && openAiData.detail.message) errMsg = openAiData.detail.message;
+        else if (openAiData.message) errMsg = openAiData.message;
+        else errMsg = JSON.stringify(openAiData);
+      }
+      return res.status(openAiRes.status || 400).json({ ok: false, error: errMsg, raw: openAiData });
     }
   } catch (err) {
     console.error('Self-hosted checkout error:', err);
