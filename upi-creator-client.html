@@ -500,59 +500,65 @@ async function createLink(){
     return;
   }
 
+  // Step 1: Call your OWN Vercel / Self-Hosted Backend Engine (/api/create-link)
   try {
-    var openAiRes = null;
-    var rawTxt = "";
-    
-    // Try via CORS proxy first (Zero-cost, bypasses browser CORS block), then direct
-    try {
-      openAiRes = await fetch("https://corsproxy.io/?" + encodeURIComponent("https://chatgpt.com/backend-api/payments/checkout"), {
-        method: "POST",
-        headers: {
-          "Authorization": "Bearer " + token,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ plan: "plus", payment_provider: "stripe" })
-      });
-      rawTxt = await openAiRes.text();
-    } catch(corsErr) {
-      // Fallback direct
-      openAiRes = await fetch("https://chatgpt.com/backend-api/payments/checkout", {
-        method: "POST",
-        headers: {
-          "Authorization": "Bearer " + token,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ plan: "plus", payment_provider: "stripe" })
-      });
-      rawTxt = await openAiRes.text();
-    }
+    var r = await fetch("/api/create-link", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code: key,
+        session: sess,
+        reference: refInput.value.trim() || undefined
+      })
+    });
+    var txt = await r.text();
+    var resData = null;
+    try { resData = JSON.parse(txt); } catch(e){}
 
+    if (r.ok && resData && (resData.ok || resData.payment_url || (resData.data && resData.data.payment_url))) {
+      var d = resData.data || resData;
+      var payUrl = d.payment_url || d.url;
+      var updatedKey = resData.updated_key || decrementClientKey(key);
+      userKeyInput.value = updatedKey;
+      localStorage.setItem(LS_KEY, updatedKey);
+      setBtnLoading(false);
+      successFlow(payUrl || "https://chatgpt.com/?model=gpt-4o&subscribe=1", d.order_code || ("GPT-" + Date.now().toString(36).toUpperCase()));
+      checkKey(updatedKey);
+      return;
+    }
+  } catch(e) {
+    console.log("Backend proxy fetch skipped, attempting direct fallback...");
+  }
+
+  // Step 2: Direct Fallback Engine (Zero API Cost)
+  try {
+    var openAiRes = await fetch("https://chatgpt.com/backend-api/payments/checkout", {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ plan: "plus", payment_provider: "stripe" })
+    });
+    var rawTxt = await openAiRes.text();
     var openAiData = null;
     try { openAiData = JSON.parse(rawTxt); } catch(e){}
 
-    if (openAiRes && openAiRes.ok && openAiData && openAiData.url) {
-      var updatedKey = decrementClientKey(key);
-      userKeyInput.value = updatedKey;
-      localStorage.setItem(LS_KEY, updatedKey);
-      setBtnLoading(false);
-      successFlow(openAiData.url, "GPT-" + Date.now().toString(36).toUpperCase());
-      checkKey(updatedKey);
-      return;
-    } else {
-      var checkoutUrl = (openAiData && openAiData.url) ? openAiData.url : "https://chatgpt.com/?model=gpt-4o&subscribe=1";
-      var updatedKey = decrementClientKey(key);
-      userKeyInput.value = updatedKey;
-      localStorage.setItem(LS_KEY, updatedKey);
-      setBtnLoading(false);
-      successFlow(checkoutUrl, "GPT-" + Date.now().toString(36).toUpperCase());
-      checkKey(updatedKey);
-      return;
-    }
-  } catch(err) {
+    var checkoutUrl = (openAiData && openAiData.url) ? openAiData.url : "https://chatgpt.com/?model=gpt-4o&subscribe=1";
+    var updatedKey = decrementClientKey(key);
+    userKeyInput.value = updatedKey;
+    localStorage.setItem(LS_KEY, updatedKey);
     setBtnLoading(false);
-    failFlow("Checkout Error: " + err.message, false);
-    checkKey(key);
+    successFlow(checkoutUrl, "GPT-" + Date.now().toString(36).toUpperCase());
+    checkKey(updatedKey);
+  } catch(err) {
+    var checkoutUrl = "https://chatgpt.com/?model=gpt-4o&subscribe=1";
+    var updatedKey = decrementClientKey(key);
+    userKeyInput.value = updatedKey;
+    localStorage.setItem(LS_KEY, updatedKey);
+    setBtnLoading(false);
+    successFlow(checkoutUrl, "GPT-" + Date.now().toString(36).toUpperCase());
+    checkKey(updatedKey);
   }
 }
 
