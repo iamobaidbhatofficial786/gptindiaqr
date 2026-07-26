@@ -38,8 +38,13 @@ function extractAccessToken(sessionData) {
   return null;
 }
 
-app.get(['/', '/health', '/api/health'], (req, res) => {
-  res.json({ ok: true, engine: 'Custom Self-Hosted ChatGPT UPI Engine v1.0.0', status: 'active' });
+app.get(['/', '/health', '/api/health', '/v1/create', '/api/create-link'], (req, res) => {
+  res.json({
+    ok: true,
+    engine: 'Custom Self-Hosted ChatGPT UPI Engine v1.0.0',
+    status: 'online',
+    usage: 'Send POST request with { session_json }'
+  });
 });
 
 app.post(['/v1/create', '/api/create-link', '/create-link'], async (req, res) => {

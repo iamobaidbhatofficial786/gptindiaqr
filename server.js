@@ -239,8 +239,17 @@ app.post(['/api/deduct-credit', '/deduct-credit'], (req, res) => {
   return res.json({ ok: true, updated_key: cleanCode, remaining_credits: 0 });
 });
 
+app.get(['/api/create-link', '/create-link', '/v1/create'], (req, res) => {
+  res.json({
+    ok: true,
+    engine: 'ChatGPT UPI Generator API Server v1.0',
+    status: 'online',
+    usage: 'Send POST request with { code, session }'
+  });
+});
+
 // 100% Self-Hosted API-Free Link Creation Endpoint
-app.post(['/api/create-link', '/create-link'], async (req, res) => {
+app.post(['/api/create-link', '/create-link', '/v1/create'], async (req, res) => {
   const { code, session, reference } = req.body || {};
 
   if (!code) {
