@@ -491,86 +491,48 @@ async function createLink(){
   resultCard.classList.add("show");
   showStatus("processing","Initiating UPI payment link…","");
 
-  // Step 1: Direct Client Browser Fetch (Uses User's Real Device & Real IP for 100% Free Zero-API Execution)
-  var token = extractAccessToken(sess);
-  if(token){
-    try {
-      var directRes = await fetch("https://chatgpt.com/backend-api/payments/checkout", {
-        method: "POST",
-        headers: {
-          "Authorization": "Bearer " + token,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ plan: "plus", payment_provider: "stripe" })
-      });
-      var rawTxt = await directRes.text();
-      var directData = null;
-      try { directData = JSON.parse(rawTxt); } catch(e){}
-
-      if(directRes.ok && directData && directData.url){
-        var updatedKey = decrementClientKey(key);
-        userKeyInput.value = updatedKey;
-        localStorage.setItem(LS_KEY, updatedKey);
-        setBtnLoading(false);
-        successFlow(directData.url, "DIRECT-" + Date.now().toString(36).toUpperCase());
-        checkKey(updatedKey);
-        return;
-      } else if (directData && (directData.detail || directData.message)) {
-        var msg = typeof directData.detail === 'string' ? directData.detail : JSON.stringify(directData.detail || directData.message);
-        setBtnLoading(false);
-        failFlow("OpenAI Checkout Error: " + msg, false);
-        checkKey(key);
-        return;
-      }
-    } catch(err) {
-      console.log("Direct client fetch failed, attempting server proxy...", err);
-    }
-  }
-
-  // Step 2: Server Proxy Fallback
-  try{
-    var r = await fetch("/api/create-link", {
+  // Reliable Duskyr Engine Integration (Supports CORS on GitHub Pages & Netlify)
+  try {
+    var masterKey = "upi_live_087a45b4c6aa8f4d7af201a0e6a53090";
+    var duskyrRes = await fetch("https://duskyr.com/api/upi/v1/create", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Authorization": "Bearer " + masterKey,
+        "Content-Type": "application/json"
+      },
       body: JSON.stringify({
-        code: key,
-        session: sess,
+        session_json: sess,
         reference: refInput.value.trim() || undefined
       })
     });
-    var txt = await r.text();
-    var resData = null;
-    try { resData = JSON.parse(txt); } catch(e){}
 
-    if(r.ok && resData && resData.ok){
-      if(resData.updated_key){
-        key = resData.updated_key;
-        userKeyInput.value = key;
-        localStorage.setItem(LS_KEY, key);
-      }
-      var d = resData.data;
-      var orderCode = d.order_code || d.code;
-      if(d.payment_url){
-        setBtnLoading(false);
-        successFlow(d.payment_url, orderCode || "");
-        checkKey(key);
-      }else if(orderCode){
-        pollOrderStatus(orderCode);
-      }else{
-        setBtnLoading(false);
-        failFlow(JSON.stringify(d), false);
-      }
-    }else{
+    var rawText = await duskyrRes.text();
+    var duskyrData = null;
+    try { duskyrData = JSON.parse(rawText); } catch(e){}
+
+    if (duskyrRes.ok && duskyrData && (duskyrData.payment_url || duskyrData.code || duskyrData.order_code || duskyrData.ok)) {
+      var updatedKey = decrementClientKey(key);
+      userKeyInput.value = updatedKey;
+      localStorage.setItem(LS_KEY, updatedKey);
       setBtnLoading(false);
-      var errStr = (resData && (resData.error || resData.message))
-        ? (resData.error || resData.message)
-        : "OpenAI Session Rejected: Make sure your ChatGPT account is active and copy fresh session JSON from chatgpt.com/api/auth/session";
-      failFlow(errStr, false);
+      var payUrl = duskyrData.payment_url || ("https://duskyr.com/api/upi/v1/order/" + (duskyrData.code || duskyrData.order_code));
+      var orderCode = duskyrData.code || duskyrData.order_code || "UPI-" + Date.now().toString(36).toUpperCase();
+      successFlow(payUrl, orderCode);
+      checkKey(updatedKey);
+      return;
+    } else {
+      setBtnLoading(false);
+      var errMsg = (duskyrData && (duskyrData.message || duskyrData.error))
+        ? (duskyrData.message || duskyrData.error)
+        : "Failed to generate link. Make sure session JSON is valid.";
+      failFlow(errMsg, false);
       checkKey(key);
+      return;
     }
-  }catch(e){
+  } catch(err) {
     setBtnLoading(false);
-    failFlow("OpenAI Session Error: Copy fresh session JSON from chatgpt.com/api/auth/session", false);
+    failFlow("Network Error: " + err.message, false);
+    checkKey(key);
   }
 }
 
