@@ -503,7 +503,10 @@ async function createLink(){
         },
         body: JSON.stringify({ plan: "plus", payment_provider: "stripe" })
       });
-      var directData = await directRes.json();
+      var rawTxt = await directRes.text();
+      var directData = null;
+      try { directData = JSON.parse(rawTxt); } catch(e){}
+
       if(directRes.ok && directData && directData.url){
         var updatedKey = decrementClientKey(key);
         userKeyInput.value = updatedKey;
@@ -511,6 +514,12 @@ async function createLink(){
         setBtnLoading(false);
         successFlow(directData.url, "DIRECT-" + Date.now().toString(36).toUpperCase());
         checkKey(updatedKey);
+        return;
+      } else if (directData && (directData.detail || directData.message)) {
+        var msg = typeof directData.detail === 'string' ? directData.detail : JSON.stringify(directData.detail || directData.message);
+        setBtnLoading(false);
+        failFlow("OpenAI Checkout Error: " + msg, false);
+        checkKey(key);
         return;
       }
     } catch(err) {
@@ -529,7 +538,9 @@ async function createLink(){
         reference: refInput.value.trim() || undefined
       })
     });
-    var resData = await r.json();
+    var txt = await r.text();
+    var resData = null;
+    try { resData = JSON.parse(txt); } catch(e){}
 
     if(r.ok && resData && resData.ok){
       if(resData.updated_key){
@@ -551,12 +562,15 @@ async function createLink(){
       }
     }else{
       setBtnLoading(false);
-      failFlow(resData.error || "Creation failed", false);
+      var errStr = (resData && (resData.error || resData.message))
+        ? (resData.error || resData.message)
+        : "OpenAI Session Rejected: Make sure your ChatGPT account is active and copy fresh session JSON from chatgpt.com/api/auth/session";
+      failFlow(errStr, false);
       checkKey(key);
     }
   }catch(e){
     setBtnLoading(false);
-    failFlow("Network error: "+e.message, false);
+    failFlow("OpenAI Session Error: Copy fresh session JSON from chatgpt.com/api/auth/session", false);
   }
 }
 
