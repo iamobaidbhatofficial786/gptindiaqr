@@ -266,13 +266,16 @@
 
       <div class="link-box">
         <div class="lnk" id="payLink"></div>
-        <button class="copy-btn" id="copyBtn">Copy</button>
+        <button class="copy-btn" id="copyBtn">Copy Link</button>
       </div>
-      <a class="open-btn" id="openBtn" target="_blank" rel="noopener">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M14 3h7v7M21 3l-9 9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M20 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-        Open Stripe / Web Checkout
+
+      <a class="btn" id="openUpiBtn" style="width:100%;margin-bottom:10px;text-decoration:none;background:linear-gradient(180deg,#38e0b0,#26b38a);color:#070a11;font-weight:800">
+        ⚡ Open in PhonePe / GPay / Paytm
       </a>
-      <p class="hint" style="text-align:center;margin-top:12px">Scan QR code in any UPI app (GPay / PhonePe / Paytm / BHIM) or click button above to complete checkout. <b>1 Credit Automatically Deducted!</b></p>
+      <a class="open-btn" id="stripeBtn" target="_blank" rel="noopener" style="text-decoration:none">
+        💳 Open Stripe Web Checkout Page
+      </a>
+      <p class="hint" style="text-align:center;margin-top:12px">Scan QR code in any UPI app or click green button above to pay! <b>1 Credit Deducted.</b></p>
     </div>
 
     <div id="failBlock" style="display:none">
@@ -575,14 +578,21 @@ function pollOrderStatus(code){
 }
 
 function successFlow(url, code){
-  showStatus("completed","UPI payment QR ready", code);
+  showStatus("completed","UPI Payment QR Ready", code);
   successBlock.style.display="block";
   failBlock.style.display="none";
-  payLink.textContent = url;
-  payLink.title = url;
-  openBtn.href = url;
 
   var upiUri = "upi://pay?pa=iamubbb@ibl&pn=ChatGPT%20Plus&am=" + currentPlanPrice + "&cu=INR&tr=" + encodeURIComponent(code);
+  
+  payLink.textContent = upiUri;
+  payLink.title = upiUri;
+
+  var upiBtn = $("openUpiBtn");
+  if(upiBtn) upiBtn.href = upiUri;
+
+  var stripeBtn = $("stripeBtn");
+  if(stripeBtn) stripeBtn.href = url || upiUri;
+
   drawQR($("qr"), upiUri);
 }
 
