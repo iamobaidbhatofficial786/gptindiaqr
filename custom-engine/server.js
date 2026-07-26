@@ -78,10 +78,19 @@ app.post(['/v1/create', '/api/create-link', '/create-link'], async (req, res) =>
 
     const openAiData = await openAiRes.json();
 
-    if (openAiRes.ok && openAiData && openAiData.url) {
+    let paymentUrl = openAiData ? openAiData.url : null;
+    if (!paymentUrl && openAiData && openAiData.checkout_session_id) {
+      let secretHash = '';
+      if (openAiData.client_secret && openAiData.client_secret.includes('_secret_')) {
+        secretHash = '#' + openAiData.client_secret.split('_secret_')[1];
+      }
+      paymentUrl = `https://checkout.stripe.com/c/pay/${openAiData.checkout_session_id}${secretHash}`;
+    }
+
+    if (openAiRes.ok && openAiData && paymentUrl) {
       return res.json({
         ok: true,
-        payment_url: openAiData.url,
+        payment_url: paymentUrl,
         order_code: 'CUSTOM-' + Date.now().toString(36).toUpperCase()
       });
     } else {
