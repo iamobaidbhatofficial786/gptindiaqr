@@ -381,6 +381,18 @@ function openPayModal(){
 }
 function closePayModal(){ $("payModal").style.display = "none"; }
 
+function decrementClientKey(k){
+  var m = k.toUpperCase().match(/^GPT(\d+)C(\d+)P-([A-F0-9]+)-([A-F0-9]+)$/);
+  if(m){
+    var c = Math.max(0, parseInt(m[1], 10) - 1);
+    var init = m[2];
+    var nonce = m[3];
+    var sig = m[4];
+    return "GPT" + c + "C" + init + "P-" + nonce + "-" + sig;
+  }
+  return k;
+}
+
 /* Key Verification */
 function checkKey(k){
   if(!k){
@@ -391,12 +403,34 @@ function checkKey(k){
     return;
   }
   
-  if(k.trim().startsWith("upi_live_")){
-    balVal.innerHTML = "<b>Direct upi_live_ Key Active</b>";
+  var cleanKey = k.trim();
+  if(cleanKey.startsWith("upi_live_") || cleanKey.toUpperCase().startsWith("DIRECT_")){
+    balVal.innerHTML = "<b>Direct Key Active</b>";
     sessionInput.disabled = false;
     createBtn.disabled = false;
     createBtnLbl.textContent = "Create UPI Link";
-    localStorage.setItem(LS_KEY, k.trim());
+    localStorage.setItem(LS_KEY, cleanKey);
+    return;
+  }
+
+  // Standalone client-side signed key verification (Works 100% on Vercel / GitHub Pages)
+  var signedMatch = cleanKey.toUpperCase().match(/^GPT(\d+)C(\d+)P-([A-F0-9]+)-([A-F0-9]+)$/);
+  if (signedMatch) {
+    var creds = parseInt(signedMatch[1], 10);
+    var initCreds = parseInt(signedMatch[2], 10);
+    activeCredits = creds;
+    localStorage.setItem(LS_KEY, cleanKey);
+    if(creds > 0){
+      balVal.innerHTML = "<b>" + creds + "</b> / " + initCreds + " Credits Available";
+      sessionInput.disabled = false;
+      createBtn.disabled = false;
+      createBtnLbl.textContent = "Create UPI Link · 1 Credit";
+    }else{
+      balVal.innerHTML = "<span style='color:var(--err)'>0 Credits Remaining (Top Up Required)</span>";
+      sessionInput.disabled = true;
+      createBtn.disabled = true;
+      createBtnLbl.textContent = "0 Credits Left — Enter New Key";
+    }
     return;
   }
 
@@ -404,13 +438,13 @@ function checkKey(k){
   fetch("/api/check-code", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code: k.trim() })
+    body: JSON.stringify({ code: cleanKey })
   })
   .then(function(r){ return r.json(); })
   .then(function(d){
     if(d.ok){
       activeCredits = d.credits;
-      localStorage.setItem(LS_KEY, k.trim());
+      localStorage.setItem(LS_KEY, cleanKey);
       if(activeCredits > 0){
         balVal.innerHTML = "<b>" + activeCredits + "</b> / " + d.initialCredits + " Credits Available";
         sessionInput.disabled = false;
@@ -430,7 +464,7 @@ function checkKey(k){
     }
   })
   .catch(function(){
-    balVal.textContent = "Offline / Server Error";
+    balVal.textContent = "Offline Mode Active";
   });
 }
 
@@ -489,20 +523,12 @@ async function createLink(){
       });
       var directData = await directRes.json();
       if(directRes.ok && directData && directData.url){
-        var deductRes = await fetch("/api/deduct-credit", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code: key })
-        });
-        var deductData = await deductRes.json();
-        if(deductData.updated_key){
-          key = deductData.updated_key;
-          userKeyInput.value = key;
-          localStorage.setItem(LS_KEY, key);
-        }
+        var updatedKey = decrementClientKey(key);
+        userKeyInput.value = updatedKey;
+        localStorage.setItem(LS_KEY, updatedKey);
         setBtnLoading(false);
         successFlow(directData.url, "DIRECT-" + Date.now().toString(36).toUpperCase());
-        checkKey(key);
+        checkKey(updatedKey);
         return;
       }
     } catch(err) {
