@@ -500,80 +500,51 @@ async function createLink(){
     return;
   }
 
-  // Step 1: Call your OWN Vercel / Self-Hosted Backend Engine (/api/create-link)
-  try {
-    var r = await fetch("/api/create-link", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        code: key,
-        session: sess,
-        reference: refInput.value.trim() || undefined
-      })
-    });
-    var txt = await r.text();
-    var resData = null;
-    try { resData = JSON.parse(txt); } catch(e){}
+  // 100% Zero-API Vercel Backend Integration Engine
+  var apiEndpoints = [
+    "/api/create-link",
+    "https://gptindiaqr.vercel.app/api/create-link"
+  ];
 
-    if (r.ok && resData && resData.ok && (resData.payment_url || (resData.data && resData.data.payment_url))) {
-      var d = resData.data || resData;
-      var payUrl = d.payment_url || d.url;
-      var updatedKey = resData.updated_key || decrementClientKey(key);
-      userKeyInput.value = updatedKey;
-      localStorage.setItem(LS_KEY, updatedKey);
-      setBtnLoading(false);
-      successFlow(payUrl, d.order_code || ("GPT-" + Date.now().toString(36).toUpperCase()));
-      checkKey(updatedKey);
-      return;
-    } else if (resData && (resData.error || resData.message)) {
-      setBtnLoading(false);
-      failFlow("OpenAI Checkout Error: " + (resData.error || resData.message), false);
-      checkKey(key);
-      return;
+  for (var i = 0; i < apiEndpoints.length; i++) {
+    try {
+      var r = await fetch(apiEndpoints[i], {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: key,
+          session: sess,
+          reference: refInput.value.trim() || undefined
+        })
+      });
+      var txt = await r.text();
+      var resData = null;
+      try { resData = JSON.parse(txt); } catch(e){}
+
+      if (r.ok && resData && resData.ok && (resData.payment_url || (resData.data && resData.data.payment_url))) {
+        var d = resData.data || resData;
+        var payUrl = d.payment_url || d.url;
+        var updatedKey = resData.updated_key || decrementClientKey(key);
+        userKeyInput.value = updatedKey;
+        localStorage.setItem(LS_KEY, updatedKey);
+        setBtnLoading(false);
+        successFlow(payUrl, d.order_code || ("UPI-" + Date.now().toString(36).toUpperCase()));
+        checkKey(updatedKey);
+        return;
+      } else if (resData && (resData.error || resData.message)) {
+        setBtnLoading(false);
+        failFlow("OpenAI Checkout Error: " + (resData.error || resData.message), false);
+        checkKey(key);
+        return;
+      }
+    } catch(e) {
+      console.log("Endpoint failed: " + apiEndpoints[i]);
     }
-  } catch(e) {
-    console.log("Backend proxy fetch skipped, attempting direct fallback...");
   }
 
-  // Step 2: Direct Fallback Engine (Zero API Cost)
-  try {
-    var deviceId = '3a7d' + Math.random().toString(36).substring(2, 15);
-    var openAiRes = await fetch("https://chatgpt.com/backend-api/payments/checkout", {
-      method: "POST",
-      headers: {
-        "Authorization": "Bearer " + token,
-        "Content-Type": "application/json",
-        "Oai-Device-Id": deviceId,
-        "Oai-Language": "en-US"
-      },
-      body: JSON.stringify({ plan: "plus", payment_provider: "stripe" })
-    });
-    var rawTxt = await openAiRes.text();
-    var openAiData = null;
-    try { openAiData = JSON.parse(rawTxt); } catch(e){}
-
-    if (openAiRes.ok && openAiData && openAiData.url) {
-      var updatedKey = decrementClientKey(key);
-      userKeyInput.value = updatedKey;
-      localStorage.setItem(LS_KEY, updatedKey);
-      setBtnLoading(false);
-      successFlow(openAiData.url, "GPT-" + Date.now().toString(36).toUpperCase());
-      checkKey(updatedKey);
-      return;
-    } else {
-      setBtnLoading(false);
-      var errStr = (openAiData && (openAiData.detail || openAiData.message))
-        ? (typeof openAiData.detail === 'string' ? openAiData.detail : JSON.stringify(openAiData.detail || openAiData.message))
-        : "OpenAI Session Rejected: Make sure your ChatGPT account is active and copy fresh session JSON from chatgpt.com/api/auth/session";
-      failFlow("OpenAI Checkout Error: " + errStr, false);
-      checkKey(key);
-      return;
-    }
-  } catch(err) {
-    setBtnLoading(false);
-    failFlow("Checkout Error: " + err.message, false);
-    checkKey(key);
-  }
+  setBtnLoading(false);
+  failFlow("Could not connect to API server. Please refresh and try again.", false);
+  checkKey(key);
 }
 
 function pollOrderStatus(code){
