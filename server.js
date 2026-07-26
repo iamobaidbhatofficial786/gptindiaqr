@@ -8,7 +8,8 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '#@Passcode@786921';
-const UPSTREAM_API_BASE = process.env.API_BASE || 'https://duskyr.com/api/upi';
+const DUSKYR_DEFAULT_URL = 'https://duskyr.com/api/upi';
+const UPSTREAM_API_BASE = process.env.API_BASE || DUSKYR_DEFAULT_URL;
 const PAYMENT_UPI_ID = process.env.PAYMENT_UPI_ID || 'iamubbb@ibl';
 
 app.use(cors());
@@ -195,7 +196,7 @@ app.post(['/api/create-link', '/create-link'], async (req, res) => {
   }
 
   const cleanCode = code.trim();
-  let upstreamKey = process.env.UPSTREAM_API_KEY ? process.env.UPSTREAM_API_KEY.trim() : 'upi_live_default';
+  let upstreamKey = process.env.UPSTREAM_API_KEY ? process.env.UPSTREAM_API_KEY.trim() : 'upi_live_087a45b4c6aa8f4d7af201a0e6a53090';
   let isDirectKey = false;
   let signedInfo = null;
   let keyData = null;
@@ -232,11 +233,15 @@ app.post(['/api/create-link', '/create-link'], async (req, res) => {
     sessionJsonStr = session.trim();
   }
 
-  const targetBase = (process.env.API_BASE || UPSTREAM_API_BASE).replace(/\/+$/, '');
-  const targetUrl = targetBase.endsWith('/v1/create') ? targetBase : `${targetBase}/v1/create`;
+  const configuredBase = (process.env.API_BASE || UPSTREAM_API_BASE).replace(/\/+$/, '');
+  const primaryTargetUrl = configuredBase.endsWith('/v1/create') ? configuredBase : `${configuredBase}/v1/create`;
 
+  let upstreamRes = null;
+  let data = null;
+
+  // Try primary configured API target
   try {
-    const upstreamRes = await fetch(targetUrl, {
+    const resTry = await fetch(primaryTargetUrl, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${upstreamKey}`,
@@ -247,52 +252,78 @@ app.post(['/api/create-link', '/create-link'], async (req, res) => {
         reference: reference || undefined
       })
     });
-
-    const rawText = await upstreamRes.text();
-    let data = {};
-    try {
-      data = JSON.parse(rawText);
-    } catch (e) {
-      console.error('Non-JSON response from upstream:', rawText.substring(0, 300));
-      return res.status(upstreamRes.status || 500).json({
-        ok: false,
-        error: `Upstream engine returned an HTML/non-JSON response (${upstreamRes.status}). If using Render free tier, wait 30s for server cold-start or check API_BASE URL.`
-      });
-    }
-
-    if (upstreamRes.ok && data && (data.code || data.order_code || data.status === 'processing' || data.payment_url || data.ok)) {
-      let updatedKey = cleanCode;
-      let newRemainingCredits = 999;
-
-      if (!isDirectKey) {
-        if (signedInfo) {
-          const newCredits = Math.max(0, signedInfo.credits - 1);
-          const sig = signKey(newCredits, signedInfo.nonce, signedInfo.initialCredits);
-          updatedKey = `GPT${newCredits}C${signedInfo.initialCredits}P-${signedInfo.nonce}-${sig}`;
-          newRemainingCredits = newCredits;
-        } else if (keyData) {
-          keyData.credits = Math.max(0, keyData.credits - 1);
-          newRemainingCredits = keyData.credits;
-          codes[cleanCode.toUpperCase()] = keyData;
-          saveCodes(codes);
-        }
-      }
-
-      return res.json({
-        ok: true,
-        data: data,
-        updated_key: updatedKey,
-        remaining_credits: newRemainingCredits
-      });
-    } else {
-      const errMsg = (data && (data.message || data.error))
-        ? (data.message || data.error)
-        : `Upstream API error (${upstreamRes.status}): ${JSON.stringify(data)}`;
-      return res.status(upstreamRes.status || 400).json({ ok: false, error: errMsg, data: data });
+    const txtTry = await resTry.text();
+    try { data = JSON.parse(txtTry); } catch(e){}
+    if (resTry.ok && data && (data.code || data.order_code || data.payment_url || data.ok)) {
+      upstreamRes = resTry;
     }
   } catch (err) {
-    console.error('Error proxying create-link request:', err);
-    return res.status(500).json({ ok: false, error: 'Server proxy request failed: ' + err.message });
+    console.warn(`Primary upstream target ${primaryTargetUrl} failed: ${err.message}`);
+  }
+
+  // Automatic Failover to Duskyr API if primary custom target failed / 404 / HTML error
+  if (!upstreamRes || !data || (!data.payment_url && !data.code && !data.order_code && !data.ok)) {
+    const duskyrUrl = 'https://duskyr.com/api/upi/v1/create';
+    if (primaryTargetUrl !== duskyrUrl) {
+      console.log('Primary target misconfigured or down. Executing automatic failover to Duskyr API...');
+      const duskyrKey = (process.env.UPSTREAM_API_KEY && process.env.UPSTREAM_API_KEY.startsWith('upi_live_'))
+        ? process.env.UPSTREAM_API_KEY.trim()
+        : 'upi_live_087a45b4c6aa8f4d7af201a0e6a53090';
+      try {
+        const fbRes = await fetch(duskyrUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${duskyrKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            session_json: sessionJsonStr,
+            reference: reference || undefined
+          })
+        });
+        const fbTxt = await fbRes.text();
+        try {
+          const fbData = JSON.parse(fbTxt);
+          if (fbRes.ok && fbData && (fbData.code || fbData.order_code || fbData.payment_url || fbData.ok)) {
+            upstreamRes = fbRes;
+            data = fbData;
+          }
+        } catch(e){}
+      } catch(fbErr) {
+        console.error('Fallback error:', fbErr);
+      }
+    }
+  }
+
+  if (upstreamRes && data && (data.code || data.order_code || data.status === 'processing' || data.payment_url || data.ok)) {
+    let updatedKey = cleanCode;
+    let newRemainingCredits = 999;
+
+    if (!isDirectKey) {
+      if (signedInfo) {
+        const newCredits = Math.max(0, signedInfo.credits - 1);
+        const sig = signKey(newCredits, signedInfo.nonce, signedInfo.initialCredits);
+        updatedKey = `GPT${newCredits}C${signedInfo.initialCredits}P-${signedInfo.nonce}-${sig}`;
+        newRemainingCredits = newCredits;
+      } else if (keyData) {
+        keyData.credits = Math.max(0, keyData.credits - 1);
+        newRemainingCredits = keyData.credits;
+        codes[cleanCode.toUpperCase()] = keyData;
+        saveCodes(codes);
+      }
+    }
+
+    return res.json({
+      ok: true,
+      data: data,
+      updated_key: updatedKey,
+      remaining_credits: newRemainingCredits
+    });
+  } else {
+    const errMsg = (data && (data.message || data.error))
+      ? (data.message || data.error)
+      : 'Upstream engine error. Check session token or server status.';
+    return res.status(400).json({ ok: false, error: errMsg, data: data });
   }
 });
 
