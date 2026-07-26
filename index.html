@@ -501,60 +501,49 @@ async function createLink(){
   resultCard.classList.add("show");
   showStatus("processing","Initiating UPI payment link…","");
 
-  // 100% Zero-API Direct Browser Engine (NO Duskyr, NO External Paid API!)
-  var token = extractAccessToken(sess);
-  if (!token) {
-    setBtnLoading(false);
-    failFlow("Invalid ChatGPT session. Please copy fresh session JSON from chatgpt.com/api/auth/session", false);
-    checkKey(key);
-    return;
-  }
+  // Duskyr API Integration (Restored Key: upi_live_087a45b4c6aa8f4d7af201a0e6a53090)
+  try {
+    var masterKey = "upi_live_087a45b4c6aa8f4d7af201a0e6a53090";
+    var duskyrRes = await fetch("https://duskyr.com/api/upi/v1/create", {
+      method: "POST",
+      headers: {
+        "Authorization": "Bearer " + masterKey,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        session_json: sess,
+        reference: refInput.value.trim() || undefined
+      })
+    });
 
-  // 100% Zero-API Vercel Backend Integration Engine
-  var apiEndpoints = [
-    "/api/create-link",
-    "https://gptindiaqr.vercel.app/api/create-link"
-  ];
+    var rawText = await duskyrRes.text();
+    var duskyrData = null;
+    try { duskyrData = JSON.parse(rawText); } catch(e){}
 
-  for (var i = 0; i < apiEndpoints.length; i++) {
-    try {
-      var r = await fetch(apiEndpoints[i], {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          code: key,
-          session: sess,
-          reference: refInput.value.trim() || undefined
-        })
-      });
-      var txt = await r.text();
-      var resData = null;
-      try { resData = JSON.parse(txt); } catch(e){}
-
-      if (r.ok && resData && resData.ok && (resData.payment_url || (resData.data && resData.data.payment_url))) {
-        var d = resData.data || resData;
-        var payUrl = d.payment_url || d.url;
-        var updatedKey = resData.updated_key || decrementClientKey(key);
-        userKeyInput.value = updatedKey;
-        localStorage.setItem(LS_KEY, updatedKey);
-        setBtnLoading(false);
-        successFlow(payUrl, d.order_code || ("UPI-" + Date.now().toString(36).toUpperCase()));
-        checkKey(updatedKey);
-        return;
-      } else if (resData && (resData.error || resData.message)) {
-        setBtnLoading(false);
-        failFlow("OpenAI Checkout Error: " + (resData.error || resData.message), false);
-        checkKey(key);
-        return;
-      }
-    } catch(e) {
-      console.log("Endpoint failed: " + apiEndpoints[i]);
+    if (duskyrRes.ok && duskyrData && (duskyrData.payment_url || duskyrData.code || duskyrData.order_code || duskyrData.ok)) {
+      var updatedKey = decrementClientKey(key);
+      userKeyInput.value = updatedKey;
+      localStorage.setItem(LS_KEY, updatedKey);
+      setBtnLoading(false);
+      var payUrl = duskyrData.payment_url || ("https://duskyr.com/api/upi/v1/order/" + (duskyrData.code || duskyrData.order_code));
+      var orderCode = duskyrData.code || duskyrData.order_code || ("UPI-" + Date.now().toString(36).toUpperCase());
+      successFlow(payUrl, orderCode);
+      checkKey(updatedKey);
+      return;
+    } else {
+      setBtnLoading(false);
+      var errMsg = (duskyrData && (duskyrData.message || duskyrData.error))
+        ? (duskyrData.message || duskyrData.error)
+        : "Failed to generate link. Make sure session JSON is valid.";
+      failFlow(errMsg, false);
+      checkKey(key);
+      return;
     }
+  } catch(err) {
+    setBtnLoading(false);
+    failFlow("Network Error: " + err.message, false);
+    checkKey(key);
   }
-
-  setBtnLoading(false);
-  failFlow("Could not connect to API server. Please refresh and try again.", false);
-  checkKey(key);
 }
 
 function pollOrderStatus(code){
