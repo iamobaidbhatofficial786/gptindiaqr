@@ -491,47 +491,49 @@ async function createLink(){
   resultCard.classList.add("show");
   showStatus("processing","Initiating UPI payment link…","");
 
-  // Reliable Duskyr Engine Integration (Supports CORS on GitHub Pages & Netlify)
+  // 100% Zero-API Direct Browser Engine (NO Duskyr, NO External Paid API!)
+  var token = extractAccessToken(sess);
+  if (!token) {
+    setBtnLoading(false);
+    failFlow("Invalid ChatGPT session. Please copy fresh session JSON from chatgpt.com/api/auth/session", false);
+    checkKey(key);
+    return;
+  }
+
   try {
-    var masterKey = "upi_live_087a45b4c6aa8f4d7af201a0e6a53090";
-    var duskyrRes = await fetch("https://duskyr.com/api/upi/v1/create", {
+    var openAiRes = await fetch("https://chatgpt.com/backend-api/payments/checkout", {
       method: "POST",
       headers: {
-        "Authorization": "Bearer " + masterKey,
+        "Authorization": "Bearer " + token,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({
-        session_json: sess,
-        reference: refInput.value.trim() || undefined
-      })
+      body: JSON.stringify({ plan: "plus", payment_provider: "stripe" })
     });
 
-    var rawText = await duskyrRes.text();
-    var duskyrData = null;
-    try { duskyrData = JSON.parse(rawText); } catch(e){}
+    var rawTxt = await openAiRes.text();
+    var openAiData = null;
+    try { openAiData = JSON.parse(rawTxt); } catch(e){}
 
-    if (duskyrRes.ok && duskyrData && (duskyrData.payment_url || duskyrData.code || duskyrData.order_code || duskyrData.ok)) {
+    if (openAiRes.ok && openAiData && openAiData.url) {
       var updatedKey = decrementClientKey(key);
       userKeyInput.value = updatedKey;
       localStorage.setItem(LS_KEY, updatedKey);
       setBtnLoading(false);
-      var payUrl = duskyrData.payment_url || ("https://duskyr.com/api/upi/v1/order/" + (duskyrData.code || duskyrData.order_code));
-      var orderCode = duskyrData.code || duskyrData.order_code || "UPI-" + Date.now().toString(36).toUpperCase();
-      successFlow(payUrl, orderCode);
+      successFlow(openAiData.url, "GPT-" + Date.now().toString(36).toUpperCase());
       checkKey(updatedKey);
       return;
     } else {
       setBtnLoading(false);
-      var errMsg = (duskyrData && (duskyrData.message || duskyrData.error))
-        ? (duskyrData.message || duskyrData.error)
-        : "Failed to generate link. Make sure session JSON is valid.";
-      failFlow(errMsg, false);
+      var errDetail = (openAiData && (openAiData.detail || openAiData.message))
+        ? (typeof openAiData.detail === 'string' ? openAiData.detail : JSON.stringify(openAiData.detail || openAiData.message))
+        : "OpenAI rejected this session. Make sure your ChatGPT account is active and logged in.";
+      failFlow("OpenAI Checkout Error: " + errDetail, false);
       checkKey(key);
       return;
     }
   } catch(err) {
     setBtnLoading(false);
-    failFlow("Network Error: " + err.message, false);
+    failFlow("Checkout Error: " + err.message, false);
     checkKey(key);
   }
 }
