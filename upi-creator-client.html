@@ -452,16 +452,30 @@ function showStatus(kind, text, code){
 
 function extractAccessToken(sessionData) {
   if (!sessionData) return null;
-  if (typeof sessionData === 'object') return sessionData.accessToken || sessionData.token || null;
-  if (typeof sessionData === 'string') {
+  var tok = null;
+  if (typeof sessionData === 'object') {
+    tok = sessionData.accessToken || sessionData.token || null;
+  } else if (typeof sessionData === 'string') {
     var trimmed = sessionData.trim();
-    if (trimmed.startsWith('{')) {
+    if (trimmed.startsWith('{') || trimmed.includes('"accessToken"')) {
       try {
         var parsed = JSON.parse(trimmed);
-        return parsed.accessToken || parsed.token || null;
-      } catch (e) {}
+        tok = parsed.accessToken || parsed.token || null;
+      } catch (e) {
+        var matchAcc = trimmed.match(/"accessToken"\s*:\s*"([^"]+)"/);
+        if (matchAcc) tok = matchAcc[1];
+      }
     }
-    if (trimmed.startsWith('eyJ')) return trimmed;
+    if (!tok) {
+      var matchJwt = trimmed.match(/eyJ[A-Za-z0-9\._\-]+/);
+      if (matchJwt) tok = matchJwt[0];
+      else tok = trimmed;
+    }
+  }
+  if (tok && typeof tok === 'string') {
+    // Sanitize token to contain strictly valid HTTP header characters (prevents DOMException)
+    tok = tok.replace(/[^A-Za-z0-9\._\-]/g, '');
+    if (tok.length > 15) return tok;
   }
   return null;
 }
