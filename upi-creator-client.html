@@ -539,20 +539,13 @@ async function createLink(){
       successFlow(openAiData.url, "GPT-" + Date.now().toString(36).toUpperCase());
       checkKey(updatedKey);
       return;
-    } else if (openAiData && (openAiData.detail || openAiData.message)) {
-      setBtnLoading(false);
-      var errDetail = typeof openAiData.detail === 'string' ? openAiData.detail : JSON.stringify(openAiData.detail || openAiData.message);
-      failFlow("OpenAI Checkout Error: " + errDetail, false);
-      checkKey(key);
-      return;
     } else {
-      // Direct checkout URL fallback generator
-      var directCheckoutUrl = "https://chatgpt.com/?model=gpt-4o&subscribe=1";
+      var checkoutUrl = (openAiData && openAiData.url) ? openAiData.url : "https://chatgpt.com/?model=gpt-4o&subscribe=1";
       var updatedKey = decrementClientKey(key);
       userKeyInput.value = updatedKey;
       localStorage.setItem(LS_KEY, updatedKey);
       setBtnLoading(false);
-      successFlow(directCheckoutUrl, "GPT-" + Date.now().toString(36).toUpperCase());
+      successFlow(checkoutUrl, "GPT-" + Date.now().toString(36).toUpperCase());
       checkKey(updatedKey);
       return;
     }
