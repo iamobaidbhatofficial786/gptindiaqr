@@ -95,9 +95,13 @@ app.post(['/v1/create', '/api/create-link', '/create-link'], async (req, res) =>
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`====================================================`);
-  console.log(`Self-Hosted ChatGPT UPI Engine running on port ${PORT}`);
-  console.log(`Endpoint: http://localhost:${PORT}/v1/create`);
-  console.log(`====================================================`);
-});
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    console.log(`====================================================`);
+    console.log(`Self-Hosted ChatGPT UPI Engine running on port ${PORT}`);
+    console.log(`Endpoint: http://localhost:${PORT}/v1/create`);
+    console.log(`====================================================`);
+  });
+}
+
+module.exports = app;
