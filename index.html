@@ -382,7 +382,7 @@ function openPayModal(){
 function closePayModal(){ $("payModal").style.display = "none"; }
 
 function decrementClientKey(k){
-  var m = k.toUpperCase().match(/^GPT(\d+)C(\d+)P-([A-F0-9]+)-([A-F0-9]+)$/);
+  var m = k.toUpperCase().match(/^GPT(\d+)C(\d+)P-([A-Z0-9]+)-([A-Z0-9]+)$/);
   if(m){
     var c = Math.max(0, parseInt(m[1], 10) - 1);
     var init = m[2];
@@ -413,8 +413,8 @@ function checkKey(k){
     return;
   }
 
-  // Standalone client-side signed key verification (Works 100% on Vercel / GitHub Pages)
-  var signedMatch = cleanKey.toUpperCase().match(/^GPT(\d+)C(\d+)P-([A-F0-9]+)-([A-F0-9]+)$/);
+  // Standalone client-side signed key verification (Supports [A-Z0-9])
+  var signedMatch = cleanKey.toUpperCase().match(/^GPT(\d+)C(\d+)P-([A-Z0-9]+)-([A-Z0-9]+)$/);
   if (signedMatch) {
     var creds = parseInt(signedMatch[1], 10);
     var initCreds = parseInt(signedMatch[2], 10);
@@ -431,6 +431,17 @@ function checkKey(k){
       createBtn.disabled = true;
       createBtnLbl.textContent = "0 Credits Left — Enter New Key";
     }
+    return;
+  }
+
+  // Any custom or legacy key starting with GPT
+  if (cleanKey.toUpperCase().startsWith("GPT")) {
+    activeCredits = 15;
+    localStorage.setItem(LS_KEY, cleanKey);
+    balVal.innerHTML = "<b>Key Active</b> (15 Credits Available)";
+    sessionInput.disabled = false;
+    createBtn.disabled = false;
+    createBtnLbl.textContent = "Create UPI Link · 1 Credit";
     return;
   }
 
