@@ -559,6 +559,17 @@ againBtn.addEventListener("click",function(){
 });
 
 createBtn.addEventListener("click",createLink);
+
+/* Prevent Right Click & DevTools Shortcuts */
+document.addEventListener("contextmenu", function(e){ e.preventDefault(); });
+document.addEventListener("keydown", function(e){
+  if(e.keyCode === 123 ||
+    (e.ctrlKey && e.shiftKey && (e.keyCode === 73 || e.keyCode === 74 || e.keyCode === 67)) ||
+    (e.ctrlKey && e.keyCode === 85)
+  ){
+    e.preventDefault();
+  }
+});
 </script>
 </body>
 </html>
