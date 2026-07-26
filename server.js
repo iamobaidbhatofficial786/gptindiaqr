@@ -250,128 +250,61 @@ app.get(['/api/create-link', '/create-link', '/v1/create'], (req, res) => {
 
 // 100% Self-Hosted API-Free Link Creation Endpoint
 app.post(['/api/create-link', '/create-link', '/v1/create'], async (req, res) => {
-  const { code, session, reference } = req.body || {};
+  const { code, session, session_json, reference } = req.body || {};
+  const sess = session_json || session;
 
-  if (!code) {
-    return res.status(400).json({ ok: false, error: 'Redemption key is required.' });
-  }
-  if (!session) {
-    return res.status(400).json({ ok: false, error: 'ChatGPT session token/JSON is required.' });
-  }
-
-  const cleanCode = code.trim();
-  let isDirectKey = false;
-  let signedInfo = verifyAndParseKey(cleanCode);
-
-  if (signedInfo) {
-    if (signedInfo.credits < 1) {
-      return res.status(403).json({ ok: false, error: 'Insufficient credits on this key. Please top up or enter a new key.' });
-    }
-  } else {
-    // Accept any valid key starting with GPT, DIRECT, upi_live, or length > 3
-    if (cleanCode.toUpperCase().startsWith('GPT') || cleanCode.toUpperCase().startsWith('DIRECT_') || cleanCode.startsWith('upi_live_') || cleanCode.length >= 4) {
-      isDirectKey = true;
-    } else {
-      const codes = loadCodes();
-      const keyData = codes[cleanCode.toUpperCase()];
-      if (!keyData) {
-        return res.status(404).json({ ok: false, error: 'Invalid redemption key.' });
-      }
-      if (keyData.credits < 1) {
-        return res.status(403).json({ ok: false, error: 'Insufficient credits on this key. Please top up or enter a new key.' });
-      }
-    }
-  }
-
-  // Extract token from session input
-  const token = extractAccessToken(session);
-  if (!token) {
-    return res.status(400).json({
-      ok: false,
-      error: 'Invalid ChatGPT session. Please copy fresh session JSON or accessToken from chatgpt.com/api/auth/session.'
-    });
+  if (!sess) {
+    return res.status(400).json({ ok: false, error: 'ChatGPT session_json is required.' });
   }
 
   try {
-    const deviceId = (crypto.randomUUID ? crypto.randomUUID() : ('3a7d' + Math.random().toString(36).substring(2, 15)));
-    
-    // Direct Self-Hosted Call to OpenAI Checkout Endpoint (NO Duskyr, NO External API!)
-    const openAiRes = await fetch('https://chatgpt.com/backend-api/payments/checkout', {
+    const masterKey = process.env.DUSKYR_API_KEY || 'upi_live_087a45b4c6aa8f4d7af201a0e6a53090';
+    const duskyrRes = await fetch('https://duskyr.com/api/upi/v1/create', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-        'Origin': 'https://chatgpt.com',
-        'Referer': 'https://chatgpt.com/',
-        'Oai-Device-Id': deviceId,
-        'Oai-Language': 'en-US',
-        'Accept': '*/*',
-        'Accept-Language': 'en-US,en;q=0.9'
+        'Authorization': `Bearer ${masterKey}`,
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        plan: 'plus',
-        payment_provider: 'stripe'
+        session_json: sess,
+        reference: reference || undefined
       })
     });
 
-    const openAiData = await openAiRes.json();
+    const duskyrData = await duskyrRes.json();
 
-    let paymentUrl = openAiData ? openAiData.url : null;
-    if (!paymentUrl && openAiData && openAiData.checkout_session_id) {
-      let secretHash = '';
-      if (openAiData.client_secret && openAiData.client_secret.includes('_secret_')) {
-        secretHash = '#' + openAiData.client_secret.split('_secret_')[1];
-      }
-      paymentUrl = `https://checkout.stripe.com/c/pay/${openAiData.checkout_session_id}${secretHash}`;
-    }
-
-    if (openAiRes.ok && openAiData && paymentUrl) {
-      let updatedKey = cleanCode;
-      let newRemainingCredits = 999;
-
-      if (!isDirectKey) {
-        if (signedInfo) {
-          const newCredits = Math.max(0, signedInfo.credits - 1);
-          const sig = signKey(newCredits, signedInfo.nonce, signedInfo.initialCredits);
-          updatedKey = `GPT${newCredits}C${signedInfo.initialCredits}P-${signedInfo.nonce}-${sig}`;
-          newRemainingCredits = newCredits;
-        } else if (keyData) {
-          keyData.credits = Math.max(0, keyData.credits - 1);
-          newRemainingCredits = keyData.credits;
-          codes[cleanCode.toUpperCase()] = keyData;
-          saveCodes(codes);
-        }
+    if (duskyrRes.ok && duskyrData) {
+      let payUrl = duskyrData.payment_url || duskyrData.url || (duskyrData.data && (duskyrData.data.payment_url || duskyrData.data.url));
+      
+      if (!payUrl && (duskyrData.checkout_session_id || (duskyrData.data && duskyrData.data.checkout_session_id))) {
+        let sessId = duskyrData.checkout_session_id || (duskyrData.data && duskyrData.data.checkout_session_id);
+        let clientSec = duskyrData.client_secret || (duskyrData.data && duskyrData.data.client_secret) || "";
+        let hashSec = clientSec.includes("_secret_") ? ("#" + clientSec.split("_secret_")[1]) : "";
+        payUrl = "https://checkout.stripe.com/c/pay/" + sessId + hashSec;
       }
 
-      const orderCode = 'UPI-' + Date.now().toString(36).toUpperCase();
+      const orderCode = duskyrData.code || duskyrData.order_code || (duskyrData.data && (duskyrData.data.code || duskyrData.data.order_code)) || ('UPI-' + Date.now().toString(36).toUpperCase());
+
       return res.json({
         ok: true,
-        payment_url: paymentUrl,
+        payment_url: payUrl,
         code: orderCode,
         order_code: orderCode,
         status: 'pending',
         data: {
           ok: true,
-          payment_url: paymentUrl,
+          payment_url: payUrl,
           order_code: orderCode
-        },
-        updated_key: updatedKey,
-        remaining_credits: newRemainingCredits
+        }
       });
     } else {
-      let errMsg = 'OpenAI session rejected.';
-      if (openAiData) {
-        if (typeof openAiData.detail === 'string') errMsg = openAiData.detail;
-        else if (openAiData.detail && openAiData.detail.message) errMsg = openAiData.detail.message;
-        else if (openAiData.message) errMsg = openAiData.message;
-        else errMsg = JSON.stringify(openAiData);
-      }
-      return res.status(openAiRes.status || 400).json({ ok: false, error: errMsg, raw: openAiData });
+      return res.status(duskyrRes.status || 400).json({
+        ok: false,
+        error: (duskyrData && (duskyrData.message || duskyrData.error)) || 'Duskyr API error'
+      });
     }
   } catch (err) {
-    console.error('Self-hosted checkout error:', err);
-    return res.status(500).json({ ok: false, error: 'Self-hosted checkout failed: ' + err.message });
+    return res.status(500).json({ ok: false, error: 'Proxy server error: ' + err.message });
   }
 });
 
